@@ -1,7 +1,7 @@
-# 构建产物
+# 构建产物（仅匹配仓库根的二进制，避免误伤 cmd/wedding 等目录）
 /bin/
 /dist/
-wedding
+/wedding
 *.exe
 
 # 运行时数据、备份、秘密（绝不进 Git）
