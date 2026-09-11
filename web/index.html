@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <title>WeddingGift · 链路验证</title>
+    <!-- 相对路径引用，兼容 /wedding/ 前缀，禁止使用域名根路径 -->
+    <link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+    <main class="card" role="main">
+        <p class="eyebrow">WeddingGift</p>
+        <h1>链路验证页</h1>
+        <p class="lead">此页面用于验证 <code>浏览器 → HTTPS → nginx → Docker → 应用</code> 的访问链路，尚未开放任何业务功能。</p>
+
+        <section class="status" aria-live="polite">
+            <div class="status-row">
+                <span class="status-label">健康检查</span>
+                <span class="status-value" id="health-state" data-state="loading">检测中…</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">构建版本</span>
+                <span class="status-value" id="build-version">—</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">服务器时间</span>
+                <span class="status-value" id="server-time">—</span>
+            </div>
+        </section>
+
+        <p class="note">本页不含真实姓名、密钥或礼品数据。</p>
+    </main>
+
+    <footer class="site-footer">
+        <span id="icp-filing">沪ICP备2026017253号-2</span>
+    </footer>
+
+    <!-- 相对路径引用，禁止使用域名根路径 -->
+    <script src="assets/app.js" type="module"></script>
+</body>
+</html>

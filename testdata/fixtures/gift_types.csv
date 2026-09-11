@@ -1,0 +1,4 @@
+type_key,title,subtitle,default_instructions,default_validity_text,default_redemption_url,theme_variant
+travel_annual_card,旅游年卡,畅游一整年,凭激活码在合作平台兑换，一年内不限次。,自激活起 12 个月内有效,https://example.com/redeem/travel,travel
+movie_voucher,电影券,看场好电影,凭激活码在合作影城 App 兑换观影券。,兑换后 90 天内有效,https://example.com/redeem/movie,movie
+coffee_voucher,咖啡券,喝杯咖啡,凭激活码在合作门店小程序兑换饮品。,自领取起 30 天内有效,https://example.com/redeem/coffee,coffee

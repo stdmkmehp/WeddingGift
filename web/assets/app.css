@@ -1,0 +1,120 @@
+:root {
+    --bg: #f7f2ea;
+    --card-bg: #fffdf9;
+    --ink: #3d3630;
+    --ink-soft: #7a6f63;
+    --accent: #c8a96a;
+    --ok: #4f7a52;
+    --warn: #b4632f;
+    --line: #ece3d5;
+    --radius: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #221f1b;
+        --card-bg: #2b2823;
+        --ink: #efe7da;
+        --ink-soft: #b3a897;
+        --line: #3a352e;
+    }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    line-height: 1.6;
+}
+
+.card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 32px 28px;
+    box-shadow: 0 8px 30px rgba(60, 50, 35, 0.08);
+}
+
+.eyebrow {
+    margin: 0 0 4px;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+h1 {
+    margin: 0 0 16px;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.lead {
+    margin: 0 0 24px;
+    color: var(--ink-soft);
+    font-size: 15px;
+}
+
+code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em;
+    color: var(--ink);
+}
+
+.status {
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 6px 0;
+}
+
+.status-label {
+    color: var(--ink-soft);
+    font-size: 14px;
+}
+
+.status-value {
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    text-align: right;
+}
+
+.status-value[data-state="ok"] { color: var(--ok); font-weight: 600; }
+.status-value[data-state="error"] { color: var(--warn); font-weight: 600; }
+
+.note {
+    margin: 20px 0 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+}
+
+.site-footer {
+    font-size: 12px;
+    color: var(--ink-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+}

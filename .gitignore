@@ -1,0 +1,30 @@
+# 构建产物
+/bin/
+/dist/
+wedding
+*.exe
+
+# 运行时数据、备份、秘密（绝不进 Git）
+/data/
+*.db
+*.db-wal
+*.db-shm
+secrets/
+app.key
+
+# 真实导入数据（仅虚构数据允许进 Git，见 testdata/fixtures/）
+/import/
+*.real.csv
+*.real.json
+
+# 本机备份产物
+/backups/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# 测试与覆盖率
+*.out
+coverage.*

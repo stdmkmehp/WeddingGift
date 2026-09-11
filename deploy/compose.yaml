@@ -1,0 +1,76 @@
+# WeddingGift compose —— 共享机器（staging）部署基线
+#
+# 严格对齐 staging-machine-brief.md §5/§6 与 docs/02-technical-architecture.md §13：
+#   - 独立 project name "wedding"，容器名 "wedding-app"
+#   - 只 expose 3000，禁止 ports: 发布到宿主机
+#   - external network costra_default（引用既有网络，不创建/修改，不指定网段）
+#   - 内存硬上限 256M、CPU 0.5
+#   - json-file 日志 50m x 3
+#   - 非 root、只读 rootfs、tmpfs /tmp、cap_drop ALL、no-new-privileges
+#   - 仅挂载 /data/wedding 下自有目录；secrets 只读
+#
+# 部署时通过 `docker compose -p wedding -f deploy/compose.yaml ...` 使用。
+# 本地开发验证可用 deploy/compose.local.yaml（不依赖 costra_default 与真实目录）。
+
+name: wedding
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: wedding-app:latest
+    container_name: wedding-app
+    restart: unless-stopped
+
+    # 只暴露给 Docker 内网，由 costra-nginx 反代；禁止 ports: 发布到宿主机。
+    expose:
+      - "3000"
+
+    environment:
+      WEDDING_LISTEN_ADDR: ":3000"
+
+    # 仅挂载 WeddingGift 自有目录；M1 占位主页不需要数据库/秘密，
+    # 这些挂载为后续里程碑预留，占位阶段目录为空亦不影响启动。
+    volumes:
+      - /data/wedding/data:/data/wedding/data
+      - /data/wedding/backups:/data/wedding/backups
+      - /data/wedding/secrets:/data/wedding/secrets:ro
+
+    networks:
+      - costra_default
+
+    # 安全加固：非 root、只读根文件系统、可写临时目录走 tmpfs。
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+    stop_grace_period: 15s
+
+    healthcheck:
+      test: ["CMD", "/app/wedding", "healthz-check"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+
+networks:
+  costra_default:
+    external: true

@@ -1,0 +1,140 @@
+{
+  "_comment": "WeddingGift M0 虚构数据包 - 仅测试用，无真实数据。字段定义见 docs/04-m0-decisions.md 第 2 节。",
+  "gift_types": [
+    {
+      "type_key": "travel_annual_card",
+      "title": "旅游年卡",
+      "subtitle": "畅游一整年",
+      "default_instructions": "凭激活码在合作平台兑换，一年内不限次。",
+      "default_validity_text": "自激活起 12 个月内有效",
+      "default_redemption_url": "https://example.com/redeem/travel",
+      "theme_variant": "travel"
+    },
+    {
+      "type_key": "movie_voucher",
+      "title": "电影券",
+      "subtitle": "看场好电影",
+      "default_instructions": "凭激活码在合作影城 App 兑换观影券。",
+      "default_validity_text": "兑换后 90 天内有效",
+      "default_redemption_url": "https://example.com/redeem/movie",
+      "theme_variant": "movie"
+    },
+    {
+      "type_key": "coffee_voucher",
+      "title": "咖啡券",
+      "subtitle": "喝杯咖啡",
+      "default_instructions": "凭激活码在合作门店小程序兑换饮品。",
+      "default_validity_text": "自领取起 30 天内有效",
+      "default_redemption_url": "https://example.com/redeem/coffee",
+      "theme_variant": "coffee"
+    }
+  ],
+  "recipient_groups": [
+    {
+      "external_ref": "G001",
+      "salutation": "王芳",
+      "custom_message": "",
+      "status": "active",
+      "members": [
+        {
+          "external_ref": "M001",
+          "display_name": "王芳",
+          "can_login": true,
+          "sort_order": 1,
+          "login_names": [
+            { "value": "王芳", "kind": "real_name" },
+            { "value": "芳芳", "kind": "nickname" },
+            { "value": "小芳", "kind": "nickname" }
+          ]
+        }
+      ],
+      "gift_items": [
+        { "external_ref": "GI001", "type_key": "coffee_voucher", "code_plaintext": "FAKECOFFEE001", "ordinal": 1, "status": "active" }
+      ]
+    },
+    {
+      "external_ref": "G002",
+      "salutation": "张伟 & 李娜 一家",
+      "custom_message": "谢谢你们一直以来的陪伴，愿我们的友谊长存",
+      "status": "active",
+      "members": [
+        {
+          "external_ref": "M002",
+          "display_name": "张伟",
+          "can_login": true,
+          "sort_order": 1,
+          "login_names": [
+            { "value": "张伟", "kind": "real_name" },
+            { "value": "阿伟", "kind": "nickname" },
+            { "value": "伟哥", "kind": "nickname" }
+          ]
+        },
+        {
+          "external_ref": "M003",
+          "display_name": "李娜",
+          "can_login": true,
+          "sort_order": 2,
+          "login_names": [
+            { "value": "李娜", "kind": "real_name" }
+          ]
+        }
+      ],
+      "gift_items": [
+        { "external_ref": "GI002", "type_key": "travel_annual_card", "code_plaintext": "FAKETRAVEL002", "ordinal": 1, "status": "active" },
+        { "external_ref": "GI003", "type_key": "movie_voucher", "code_plaintext": "FAKEMOVIE003", "ordinal": 2, "status": "active" },
+        {
+          "external_ref": "GI004",
+          "type_key": "coffee_voucher",
+          "code_plaintext": "FAKECOFFEE004",
+          "instructions_override": "凭本券在指定旗舰店兑换限定联名饮品。",
+          "validity_text_override": "自激活起 45 天内有效",
+          "redemption_url_override": "https://example.com/redeem/coffee-special",
+          "ordinal": 3,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "external_ref": "G003",
+      "salutation": "陈强 & 刘洋 一家",
+      "custom_message": "",
+      "status": "active",
+      "members": [
+        {
+          "external_ref": "M004",
+          "display_name": "陈强",
+          "can_login": true,
+          "sort_order": 1,
+          "login_names": [
+            { "value": "陈强", "kind": "real_name" }
+          ]
+        },
+        {
+          "external_ref": "M005",
+          "display_name": "刘洋",
+          "can_login": true,
+          "sort_order": 2,
+          "login_names": [
+            { "value": "刘洋", "kind": "real_name" }
+          ]
+        },
+        {
+          "external_ref": "M006",
+          "display_name": "陈小满",
+          "can_login": false,
+          "sort_order": 3,
+          "login_names": []
+        }
+      ],
+      "gift_items": [
+        { "external_ref": "GI005", "type_key": "travel_annual_card", "code_plaintext": "FAKETRAVEL005", "ordinal": 1, "status": "active" },
+        { "external_ref": "GI006", "type_key": "movie_voucher", "code_plaintext": "FAKEMOVIE006", "ordinal": 2, "status": "active" }
+      ]
+    }
+  ],
+  "access_keys": [
+    { "external_ref": "K001", "code_plaintext": "20260001", "status": "active", "bind_group_external_ref": null },
+    { "external_ref": "K002", "code_plaintext": "20260002", "status": "active", "bind_group_external_ref": null },
+    { "external_ref": "K003", "code_plaintext": "20260003", "status": "active", "bind_group_external_ref": null }
+  ]
+}

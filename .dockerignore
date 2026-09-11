@@ -1,0 +1,20 @@
+# 构建上下文精简：只保留构建二进制所需内容
+.git
+.gitignore
+.dockerignore
+.codebuddy
+.learnings
+docs
+staging-machine-brief.md
+deploy
+ops
+testdata
+*.md
+
+# 运行时/敏感数据
+data
+backups
+secrets
+import
+app.key
+*.db

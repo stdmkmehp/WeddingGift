@@ -1,0 +1,7 @@
+external_ref,group_external_ref,display_name,can_login,sort_order
+M001,G001,王芳,true,1
+M002,G002,张伟,true,1
+M003,G002,李娜,true,2
+M004,G003,陈强,true,1
+M005,G003,刘洋,true,2
+M006,G003,陈小满,false,3
