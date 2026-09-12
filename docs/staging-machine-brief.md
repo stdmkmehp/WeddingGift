@@ -227,25 +227,28 @@ networks:
 在 `/data/conf/nginx/costra.cloud.conf` 的 **443 server block** 内、兜底 `location / { return 404; }` 的**正上方**，原样插入：
 
 ```nginx
-# ── wedding 临时站点（2026-09-11 插入 · 外来块 · 约3个月后随 §7 拆除 · Costra 维护者勿动）──
-location = /wedding {
-    return 301 /wedding/;
-}
+    # ========= BEGIN wedding 临时站点（2026-09-11 插入 · 外来块 · 约3个月后随 §7 拆除 · Costra 维护者勿动） =========
+    location = /wedding {
+        return 301 /wedding/;
+    }
 
-location /wedding/ {
-    # proxy_pass 带尾斜杠 = 抹掉前缀：/wedding/api/auth/login → 应用看到 /api/auth/login
-    proxy_pass http://wedding-app:3000/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_connect_timeout 5s;
-    proxy_read_timeout 60s;
-    client_max_body_size 2m;
-    # Cookie 路径收编：应用若 Set-Cookie Path=/，强制改写为 /wedding/，防与 Costra 会话互串
-    proxy_cookie_path / /wedding/;
-}
+    location /wedding/ {
+        # proxy_pass 带尾斜杠 = 抹掉前缀：/wedding/api/auth/login → 应用看到 /api/auth/login
+        proxy_pass http://wedding-app:3000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        client_max_body_size 2m;
+        # Cookie 路径收编：应用若 Set-Cookie Path=/，强制改写为 /wedding/，防与 Costra 会话互串
+        proxy_cookie_path / /wedding/;
+    }
+    # ========= END wedding 临时站点（2026-09-11 插入 · 外来块 · 约3个月后随 §7 拆除 · Costra 维护者勿动） =========
 ```
+
+> nginx 解析器对缩进/空白完全无感（指令靠 `;` 与 `{}` 界定）；要求块整体 4 空格缩进、内部 8 空格，是为了与 live 文件既有惯例（如 `/v1/` 块）保持一致，便于 Costra 维护者 diff 审计和三个月后按 BEGIN/END 标记干净拆除。
 
 > 容器名/端口以你的 compose 为准并同步改这两处。nginx 按容器名解析是因为应用容器加入了 `costra_default` 网络。
 
@@ -279,7 +282,7 @@ proxy_pass 带尾斜杠会**抹掉前缀**，应用内部看到的请求路径�
 
 建的时候按此边界建，拆的时候就是干净的原路退回：
 
-1. 从 `/data/conf/nginx/costra.cloud.conf` **删除 §6.2 插入的两个 location 块**（含首行注释），然后 `docker exec costra-nginx nginx -t && docker exec costra-nginx nginx -s reload`。若期间 Costra 未动过该文件，也可直接用 §3.2 的备份恢复——**恢复前先 diff 确认 Costra 侧无其他改动**；
+1. 从 `/data/conf/nginx/costra.cloud.conf` **删除 §6.2 插入的内容**（`# ========= BEGIN wedding` 到 `# ========= END wedding` 两行注释之间的全部，含这两行本身），然后 `docker exec costra-nginx nginx -t && docker exec costra-nginx nginx -s reload`。若期间 Costra 未动过该文件，也可直接用 §3.2 的备份恢复——**恢复前先 diff 确认 Costra 侧无其他改动**；
 2. **删除 WeddingGift 的 cron 单元** `rm -f /etc/cron.d/wedding`（Costra 的 `costra-standby`、`costra-analyze` 两个 cron 文件不动）；
 3. `docker compose -p wedding down -v`；
 4. 删 `/data/wedding/` 与 `/opt/wedding/`（WeddingGift 全部数据、备份、秘密、代码与 compose 目录）；
