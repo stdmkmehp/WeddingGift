@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift M2 真实 URL 访问链路操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v1.3
+版本: v1.4
 日期: 2026-09-12
 状态: M2 已执行并验收通过（G2 门禁通过），里程碑关闭
 依赖文档: docs/03-development-plan.md（M2/WG-201~203）, docs/staging-machine-brief.md（§3/§5/§6/§8）, docs/02-technical-architecture.md（§12）
@@ -25,10 +25,10 @@
 
 ## 1. 前置条件
 
-- staging 已 `git clone`（或 `git pull` 到最新）本仓库于 `/opt/wedding/`。
+- staging 已 `git clone`（或 `git pull` 到最新）本仓库于 `/root/WeddingGift/`。
 - M1 已在 staging 通过容器冒烟验证（镜像构建、健康检查、主页与 `/healthz` 访问全绿）。
 - 当前时间避开避峰窗口：每天 00:00/06:00/12:00/18:00（±10 分钟）、06:27、23:50–24:00。
-- 所有命令以 root 在 staging 执行；脚本位于 `/opt/wedding/ops/`。
+- 所有命令以 root 在 staging 执行；脚本位于 `/root/WeddingGift/ops/`。
 
 ## 2. WG-201 只读自检
 
@@ -150,3 +150,4 @@ nginx 相关回滚同样**人工执行**，两种方法任选（对应说明书 
 | v1.1 | 2026-09-12 | nginx 接入与回滚改为全人工操作（对象为 Costra live conf，谨慎原则），删除 nginx-install/nginx-rollback 脚本；不再保留本地 compose 冒烟（compose.local.yaml/smoke-local.sh），容器操作统一在线上机器执行 |
 | v1.2 | 2026-09-12 | 修正 WG-202 目录属主描述：`secrets` 属主同为容器用户 65534（root:root 0700 目录会阻止容器内非 root 进程读取 `app.key`），与 `ops/deploy-app.sh` 修复同步 |
 | v1.3 | 2026-09-12 | M2 验收通过：G2 门禁核对全部勾选，里程碑关闭，进入 M3 |
+| v1.4 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |

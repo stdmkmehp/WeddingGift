@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift M0 需求与数据契约冻结
 文档类型: 决策记录 / 数据契约 / 文案字段
-版本: v1.0
-日期: 2026-09-11
+版本: v1.1
+日期: 2026-09-12
 状态: M0 冻结，作为 M1 及后续开发的字段与规则事实源
 依赖文档: docs/00-project-brief.md, docs/01-product-architecture.md, docs/02-technical-architecture.md, docs/03-development-plan.md, staging-machine-brief.md
 -->
@@ -43,7 +43,7 @@
 | D-16 | 会话 | 服务端随机令牌（≥256 bit），库存 SHA-256 摘要；Cookie `wedding_session`，Secure/HttpOnly/SameSite=Lax，Path 由 nginx 收编到 `/wedding/`。 |
 | D-17 | 备份 | 本机 cron 独立单元 `/etc/cron.d/wedding`，每小时 `:44`，SQLite online backup，保留最近 72 份，只写 `/data/wedding/backups/`。 |
 | D-18 | 异常处理边界 | 少量异常一律停服后人工检查修正，不建设自动补发、改绑、审计状态机或告警平台。 |
-| D-19 | 目录收束 | 全部产出集中于 `/opt/wedding/`（代码/部署物）与 `/data/wedding/`（运行时数据）；日志走 Docker json-file。 |
+| D-19 | 目录收束 | 全部产出集中于 `/root/WeddingGift/`（代码/部署物）与 `/data/wedding/`（运行时数据）；日志走 Docker json-file。 |
 | D-20 | 数据隔离 | 不使用/探测/挂载 Costra 任何有状态组件、配置与备份；应用只用自有 SQLite 与自有目录。 |
 
 **开放项处置**：M0 结束时不存在会改变数据库关系、密钥格式或礼品展示结构的未决问题。最终文案（新人称呼、婚礼日期、致谢文本）为可延后确认项，见第 3 节，其字段已冻结，不阻塞 M1/M2。
@@ -191,4 +191,5 @@
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.1 | 2026-09-12 | D-19 目录收束的仓库根由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
 | v1.0 | 2026-09-11 | 完成 M0（WG-001～003）冻结：业务决策、六类数据契约、文案字段与占位内容 |

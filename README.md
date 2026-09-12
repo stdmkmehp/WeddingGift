@@ -150,16 +150,18 @@ CGO_ENABLED=0 go build -o bin/wedding ./cmd/wedding
 
 镜像为多阶段构建 + `scratch` 基底，非 root、只读 rootfs，健康检查用应用自带 `wedding healthz-check`（不依赖镜像内 curl/wget）。
 
+构建统一走 `deploy/compose.yaml` 的 `build` 段，版本信息经 `WEDDING_VERSION`/`WEDDING_COMMIT`/`WEDDING_BUILD_TIME` 环境变量注入（缺省回退 dev/unknown）：
+
 ```sh
-# 构建镜像（注入版本信息）
-ops/build-image.sh wedding-app:0.1.0
+# 仅构建镜像（注入版本信息）
+WEDDING_VERSION="$(git describe --tags --always --dirty)" docker compose -f deploy/compose.yaml build
 ```
 
-共享机器部署使用 `deploy/compose.yaml`（external network `costra_default`、只 expose 不发布端口、256M/0.5CPU、json-file 日志），由 `ops/deploy-app.sh` 驱动。
+共享机器部署由 `ops/deploy-app.sh` 驱动（external network `costra_default`、只 expose 不发布端口、256M/0.5CPU、json-file 日志）。
 
 ## M2 真实 URL 链路（staging 执行）
 
-在 staging 机器 `/opt/wedding/` 仓库根按顺序执行（详见 `docs/05-m2-runbook.md`）：
+在 staging 机器 `/root/WeddingGift/` 仓库根按顺序执行（详见 `docs/05-m2-runbook.md`）：
 
 ```sh
 ops/staging-selfcheck.sh   # WG-201 只读自检（staging-machine-brief §8）

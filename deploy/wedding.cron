@@ -9,9 +9,9 @@
 #     （ops/backup.sh 中 KEEP=72）均为上线前可调整的简单配置。
 #
 # 安装（在 staging 上执行）：
-#   install -m 0644 -o root -g root /opt/wedding/deploy/wedding.cron /etc/cron.d/wedding
+#   install -m 0644 -o root -g root /root/WeddingGift/deploy/wedding.cron /etc/cron.d/wedding
 #
 # 输出纪律：备份日志追加到 /data/wedding/backups/backup.log（目录收束约定，
 # 不落地到其他位置）；失败仅本机可查，不建设外部告警（技术架构 §14.2）。
 
-44 * * * * root /opt/wedding/ops/backup.sh >> /data/wedding/backups/backup.log 2>&1
+44 * * * * root /root/WeddingGift/ops/backup.sh >> /data/wedding/backups/backup.log 2>&1

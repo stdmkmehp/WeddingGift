@@ -67,7 +67,7 @@ section() {
   ls -l /data/conf/nginx/
 
   section "WeddingGift 自有目录现状（首次上机应不存在）"
-  ls -ld /opt/wedding /data/wedding 2>/dev/null || echo "/opt/wedding 或 /data/wedding 尚未创建"
+  ls -ld /root/WeddingGift /data/wedding 2>/dev/null || echo "/root/WeddingGift 或 /data/wedding 尚未创建"
 } 2>&1 | tee "${LOG_FILE}"
 
 echo ""

@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v1.9
+版本: v2.0
 日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -194,8 +194,8 @@ WeddingGift/
 - `internal/domain` 不依赖 HTTP 或 SQLite。
 - `testdata` 只包含虚构姓名、昵称、密钥和礼品码。
 - `deploy/` 只保存 WeddingGift 自有配置和 nginx 插入片段，不复制 Costra 全量配置。
-- `ops/` 只能操作 `/opt/wedding`、`/data/wedding`、WeddingGift 容器、`/etc/cron.d/wedding` 单元和说明书允许的 nginx 插入块。
-- WeddingGift 全部产出收束到 `/opt/wedding/`（代码/部署物）与 `/data/wedding/`（运行时数据），日志走 Docker json-file，不散落其他位置。
+- `ops/` 只能操作 `/root/WeddingGift`、`/data/wedding`、WeddingGift 容器、`/etc/cron.d/wedding` 单元和说明书允许的 nginx 插入块。
+- WeddingGift 全部产出收束到 `/root/WeddingGift/`（代码/部署物）与 `/data/wedding/`（运行时数据），日志走 Docker json-file，不散落其他位置。
 
 ## 6. 数据架构
 
@@ -523,11 +523,11 @@ wedding backup create --output <path>
 
 ### 13.1 目录边界
 
-WeddingGift 全部产出收束到两处固定根目录，不散落其他位置：`/opt/wedding/` 存放代码与部署物，`/data/wedding/` 存放运行时数据；应用日志走 Docker json-file（stdout/stderr），不额外落地散乱日志文件。
+WeddingGift 全部产出收束到两处固定根目录，不散落其他位置：`/root/WeddingGift/` 存放代码与部署物，`/data/wedding/` 存放运行时数据；应用日志走 Docker json-file（stdout/stderr），不额外落地散乱日志文件。
 
 | 路径 | 用途 | 规则 |
 |---|---|---|
-| `/opt/wedding/` | compose、镜像版本信息、部署与备份脚本、`/etc/cron.d/wedding` 片段与 nginx 插入片段的仓库副本 | 只属于 WeddingGift |
+| `/root/WeddingGift/` | compose、镜像版本信息、部署与备份脚本、`/etc/cron.d/wedding` 片段与 nginx 插入片段的仓库副本 | 只属于 WeddingGift |
 | `/data/wedding/data/` | SQLite 数据库 | `0700` 目录、数据库 `0600`，属主容器用户 65534 |
 | `/data/wedding/backups/` | 本机 cron 备份 | 属主容器用户 65534；默认保留最近 72 份（≈3 天），不写入 Costra 目录 |
 | `/data/wedding/secrets/` | `app.key` | `0700` 目录、`0600` 文件，属主容器用户 65534、只读挂载 |
@@ -567,8 +567,8 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 ### 14.1 备份策略
 
 - 宿主机 cron 以**独立单元文件 `/etc/cron.d/wedding`** 落地，不写入或修改 Costra 的 `/etc/cron.d/costra-standby`、`/etc/cron.d/costra-analyze`（见 `staging-machine-brief.md §5.1(3)`）。
-- 默认 **每小时 `:44`** 调用 `/opt/wedding/ops/backup.sh`；选 `:44` 是为避开整点（00/06/12/18 从库 pg_dump）、`:47`（主从健康检查）、06:27（staging 刷新）和 23:5x（分析窗口）等既有窗口，WeddingGift 备份为秒级 SQLite online backup，不与这些任务实质竞争。执行频率与时间点是脚本与 cron 中的简单配置，可在上线前调整。
-- 脚本固定执行 `docker compose -p wedding -f /opt/wedding/deploy/compose.yaml exec -T app /app/wedding backup create --output <目标文件>`，让容器内同版本二进制通过 SQLite online backup API 写入 `/data/wedding/backups/wedding-YYYYMMDD-HHMMSS.db`；不得在宿主机额外安装应用二进制。
+- 默认 **每小时 `:44`** 调用 `/root/WeddingGift/ops/backup.sh`；选 `:44` 是为避开整点（00/06/12/18 从库 pg_dump）、`:47`（主从健康检查）、06:27（staging 刷新）和 23:5x（分析窗口）等既有窗口，WeddingGift 备份为秒级 SQLite online backup，不与这些任务实质竞争。执行频率与时间点是脚本与 cron 中的简单配置，可在上线前调整。
+- 脚本固定执行 `docker compose -p wedding -f /root/WeddingGift/deploy/compose.yaml exec -T app /app/wedding backup create --output <目标文件>`，让容器内同版本二进制通过 SQLite online backup API 写入 `/data/wedding/backups/wedding-YYYYMMDD-HHMMSS.db`；不得在宿主机额外安装应用二进制。
 - 成功后运行 SQLite 完整性检查，并默认只保留最近 **72 份（≈3 天，每小时一份）**；保留数量是脚本中的简单配置。
 - 因真实数据在 M6 一次性导入后基本静态，逐小时备份主要覆盖运行期新增的绑定关系与会话意外损坏；真正的事实源仍是项目所有者离线保管的源文件与 `app.key`。
 - 发布、migration、真实数据导入和人工修正前可手动额外创建一份备份。
@@ -660,7 +660,7 @@ flowchart LR
 3. 按 `staging-machine-brief.md §7` 删除 WeddingGift location 并热加载。
 4. 删除 WeddingGift cron 单元 `/etc/cron.d/wedding`（不动 Costra 的 cron 文件）。
 5. 停止并删除 `wedding` compose 项目及自有镜像。
-6. 删除 `/opt/wedding/` 和 `/data/wedding/`。
+6. 删除 `/root/WeddingGift/` 和 `/data/wedding/`。
 7. 验证 `/wedding/` 返回既定 404，Costra 原路径健康，Docker 网络未被修改。
 
 ## 18. 威胁模型与接受风险
@@ -725,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.0 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置），§5/§13.1/§14.1/§17.4 全部引用同步更新 |
 | v1.9 | 2026-09-12 | M6 本地部分落地：§16 测试策略收口为 `ops/test.sh` 一条命令（WG-601，含 `internal/httpx/security_test.go` 安全回归与来宾旅程 E2E）；WG-602 安全与共享边界核对完成（`docs/06-m6-security-review.md`，含 2026-09-12 同源/根 Service Worker 公网实证）；compose 落地 `/data/wedding/import` 只读挂载（§13.1 表既有目录的挂载补齐，供 WG-603 真实数据导入）；WG-603/604 上机手册 `docs/06-m6-runbook.md` 与 `ops/canary-smoke.sh` 就位 |
 | v1.8 | 2026-09-12 | M5 落地：`POST /api/gifts/reveal` 与 `internal/gift` 就位（归属校验 + 按需解密，跨组/未知统一 404）；文案字段补齐 `maintenance_text`（`WEDDING_MAINTENANCE_TEXT`）；前端单页应用按 §9.3 与产品 §10 实现（视觉令牌、登录/多礼品/异常态状态机、剪贴板降级、textContent 渲染），替代 M1 占位主页 |
 | v1.7 | 2026-09-12 | M4 落地：§8.2 明确 BEGIN IMMEDIATE 经专用连接显式事务实现；§9.4 会话收敛为固定 30 天有效期；§10.3 落地 Host 白名单 + Origin 同源校验与限流默认阈值；§15.2 healthz 接线 SQLite 只读检查；`bootstrap`/`login`/`logout` API 就位（礼品码 reveal 属 M5） |

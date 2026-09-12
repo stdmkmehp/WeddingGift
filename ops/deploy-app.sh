@@ -9,7 +9,7 @@
 #
 # 不做的事：不触碰 nginx、不创建/修改 cron、不导入任何数据（M2 占位阶段）。
 #
-# 用法（在 staging 机器 /opt/wedding 仓库根执行）：
+# 用法（在 staging 机器 /root/WeddingGift 仓库根执行）：
 #   ops/deploy-app.sh
 
 set -eu
@@ -55,7 +55,7 @@ chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ls -la /data/wedding
 
 echo "--- 构建并启动 ${CONTAINER}（compose project: ${PROJECT}） ---"
-# 注入版本信息（与 ops/build-image.sh 同一来源），供占位页展示构建版本。
+# 注入版本信息（对应 compose.yaml 的 build.args），供占位页展示构建版本。
 VERSION="$(git -C "${REPO_ROOT}" describe --tags --always --dirty 2>/dev/null || echo dev)"
 COMMIT="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift M6 正式开放操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v1.0
+版本: v1.1
 日期: 2026-09-12
 状态: 待上机执行（WG-601/602 本地部分已完成）
 依赖文档: docs/03-development-plan.md（M6/WG-601~604）, docs/06-m6-security-review.md, docs/05-m2-runbook.md, docs/staging-machine-brief.md
@@ -80,7 +80,7 @@ GIC03,CANARY2,movie_voucher,CANARYMOVIE903,,,,2,active
 ## 3. WG-603 真实数据导入
 
 ```sh
-cd /opt/wedding && git pull   # 发布候选 commit
+cd /root/WeddingGift && git pull   # 发布候选 commit
 
 # 1. app.key 就位（首次放置时）：0600、属主 65534，离线副本异位保管
 ls -l /data/wedding/secrets/app.key
@@ -215,4 +215,5 @@ md5sum /etc/cron.d/costra-standby /etc/cron.d/costra-analyze
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.1 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
 | v1.0 | 2026-09-12 | 完成 M6 上机手册：真实数据包 canary 模板、WG-603 导入序列、WG-604 发布与冒烟（verify-public/canary-smoke/浏览器矩阵）、cron 启用、回滚预案与 G6 门禁 |

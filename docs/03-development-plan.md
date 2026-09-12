@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift 开发任务拆分与交付计划
 文档类型: 开发计划 / 工作分解结构
-版本: v1.4
-日期: 2026-09-11
+版本: v1.5
+日期: 2026-09-12
 状态: 设计已按最新规则收敛，待完成 M0 后开始开发
 依赖文档: docs/00-project-brief.md, docs/01-product-architecture.md, docs/02-technical-architecture.md, staging-machine-brief.md
 -->
@@ -474,6 +474,7 @@ M2 后保留同一 `/wedding/` 入口，但占位页不得暴露未完成 API �
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.5 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
 | v1.4 | 2026-09-11 | 备份改为独立 `/etc/cron.d/wedding` 每小时 `:44` 触发、保留 72 份（WG-305/WG-603/测试矩阵/完成定义同步）；WG-102 增加 `healthz-check` 子命令；目录收束到 `/opt/wedding` 与 `/data/wedding` |
 | v1.3 | 2026-09-11 | 新增真实 URL 最小主页独立阶段；按姓名唯一、多昵称、8 位人工密钥、一组一密钥和多礼品重排任务；删除 COS、主从、复杂恢复、重审计和高并发相关工作；工期收敛为 10–15 人日 |
 | v1.2 | 2026-09-11 | 完成原始开发任务拆分基线 |

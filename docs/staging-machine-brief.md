@@ -172,7 +172,7 @@ WeddingGift 备份选 **每小时 `:44`** 是为避开整点（00/06/12/18 从�
 2. WeddingGift 使用“本名或配置昵称 + 8 位卡片密钥”登录；卡片密钥和登录后展示的礼品激活码都属于敏感数据，使用现有 HTTPS，避免写入日志，并对登录接口做基础限流。
 3. **合规**：`stg.costra.cloud` 共用主备案（沪ICP备2026017253号-2，现有 server block 已自动带 `X-ICP-Filing` 响应头）。对外可访问的网页按备案公示规范，应在页面底部悬挂备案号并链接 `https://beian.miit.gov.cn/`；网页内容与备案主体性质的一致性、收集登录信息的隐私口径，由服务所有者自行把关。临时 3 个月用途，建议控制传播范围、不公开引流。
 4. **WeddingGift 备份边界已定**：只使用宿主机 cron 和 `/data/wedding/backups/` 本地目录，不接 COS、不做主从或异机恢复。宿主机 cron 以独立文件 `/etc/cron.d/wedding` 落地（不写 Costra 的 cron 文件），默认 **每小时 `:44`** 触发一次 SQLite online backup 并 **保留最近 72 份（≈3 天）**，具体时间点与份数可在上线前调整；不得写入 `/data/slave/backups` 或分析栈的 inbox 目录。
-5. **WeddingGift 目录收束**：所有 WeddingGift 产出必须集中在两处固定根目录，不散落到其他位置——`/opt/wedding/`（代码、compose、部署与备份脚本、cron 片段、nginx 备份片段的仓库副本）与 `/data/wedding/`（运行时数据 `data/`、本机备份 `backups/`、应用秘密 `secrets/`、临时导入 `import/`、nginx 改前备份 `nginx/`）。应用运行日志走 Docker json-file（§5.2.3），不额外落地散乱日志文件。拆除时只清理这两个根目录与 `/etc/cron.d/wedding`（§7）。
+5. **WeddingGift 目录收束**：所有 WeddingGift 产出必须集中在两处固定根目录，不散落到其他位置——`/root/WeddingGift/`（代码、compose、部署与备份脚本、cron 片段、nginx 备份片段的仓库副本）与 `/data/wedding/`（运行时数据 `data/`、本机备份 `backups/`、应用秘密 `secrets/`、临时导入 `import/`、nginx 改前备份 `nginx/`）。应用运行日志走 Docker json-file（§5.2.3），不额外落地散乱日志文件。拆除时只清理这两个根目录与 `/etc/cron.d/wedding`（§7）。
 
 ---
 
@@ -285,7 +285,7 @@ proxy_pass 带尾斜杠会**抹掉前缀**，应用内部看到的请求路径�
 1. 从 `/data/conf/nginx/costra.cloud.conf` **删除 §6.2 插入的内容**（`# ========= BEGIN wedding` 到 `# ========= END wedding` 两行注释之间的全部，含这两行本身），然后 `docker exec costra-nginx nginx -t && docker exec costra-nginx nginx -s reload`。若期间 Costra 未动过该文件，也可直接用 §3.2 的备份恢复——**恢复前先 diff 确认 Costra 侧无其他改动**；
 2. **删除 WeddingGift 的 cron 单元** `rm -f /etc/cron.d/wedding`（Costra 的 `costra-standby`、`costra-analyze` 两个 cron 文件不动）；
 3. `docker compose -p wedding down -v`；
-4. 删 `/data/wedding/` 与 `/opt/wedding/`（WeddingGift 全部数据、备份、秘密、代码与 compose 目录）；
+4. 删 `/data/wedding/` 与 `/root/WeddingGift/`（WeddingGift 全部数据、备份、秘密、代码与 compose 目录）；
 5. 无 DNS、无证书需要清理（路径方案天然无此两项）。
 
 全程对 Costra 三栈零接触，live conf 恢复插入前原貌。
@@ -329,7 +329,7 @@ grep -n 'location' /data/conf/nginx/costra.cloud.conf
 | Costra 各栈 env（**勿动**） | `/data/conf/{server,standby,analytics}.env` |
 | 生产数据副本（**勿碰**） | `/data/pgsql-standby`、`/data/slave/backups` |
 | Costra 项目代码 | `/root/Costra` |
-| 新应用建议落地目录 | `/opt/wedding/`（代码 / compose / 脚本 / cron 片段 / nginx 备份片段）· `/data/wedding/`（运行时数据、备份、秘密、导入、nginx 改前备份） |
+| 新应用建议落地目录 | `/root/WeddingGift/`（代码 / compose / 脚本 / cron 片段 / nginx 备份片段）· `/data/wedding/`（运行时数据、备份、秘密、导入、nginx 改前备份） |
 | WeddingGift cron 单元（**独立文件，勿写 Costra cron**） | `/etc/cron.d/wedding` |
 
 ## 附录 B：术语
