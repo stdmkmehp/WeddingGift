@@ -1,4 +1,4 @@
-// M4 公网 API：bootstrap / login / logout（技术架构 §9.1 路由表）。
+// 公网 API：bootstrap / login / logout / gifts reveal（技术架构 §9.1 路由表）。
 //
 // 统一防护（§9.2、§10.3）：JSON 编解码、8 KB 请求体、Host/Origin 同源校验、
 // 登录失败统一模糊、敏感接口 no-store、请求 ID 由外层中间件提供。
@@ -16,6 +16,7 @@ import (
 
 	"github.com/weddinggift/wedding/internal/auth"
 	"github.com/weddinggift/wedding/internal/domain"
+	"github.com/weddinggift/wedding/internal/gift"
 )
 
 // sessionCookieName 是会话 Cookie 名称（技术架构 §9.4）。
@@ -36,15 +37,16 @@ type apiErrorBody struct {
 }
 
 type serviceTexts struct {
-	CoupleNames   string `json:"coupleNames"`
-	WeddingDate   string `json:"weddingDate"`
-	HomeIntro     string `json:"homeIntro"`
-	LoginHint     string `json:"loginHint"`
-	ThanksMessage string `json:"thanksMessage"`
-	PrivacyNote   string `json:"privacyNote"`
-	ContactHint   string `json:"contactHint"`
-	IcpFilingText string `json:"icpFilingText"`
-	IcpFilingURL  string `json:"icpFilingUrl"`
+	CoupleNames     string `json:"coupleNames"`
+	WeddingDate     string `json:"weddingDate"`
+	HomeIntro       string `json:"homeIntro"`
+	LoginHint       string `json:"loginHint"`
+	ThanksMessage   string `json:"thanksMessage"`
+	PrivacyNote     string `json:"privacyNote"`
+	ContactHint     string `json:"contactHint"`
+	IcpFilingText   string `json:"icpFilingText"`
+	IcpFilingURL    string `json:"icpFilingUrl"`
+	MaintenanceText string `json:"maintenanceText"`
 }
 
 type giftSummaryDTO struct {
@@ -174,6 +176,67 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	clearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+type revealRequest struct {
+	GiftID string `json:"giftId"`
+}
+
+type revealResponse struct {
+	Code string `json:"code"`
+}
+
+// maxGiftIDLen 是 giftId 的长度兜底（内部 ID 为 32 位 hex，留一倍余量防滥用）。
+const maxGiftIDLen = 64
+
+// handleRevealGift 按 giftId 返回本组某份礼品的明文激活码（WG-501，§9.1）。
+// 必须持有有效会话；giftId 再次校验归属当前会话同行组，不信任前端列表。
+// 不存在/跨组/已停用统一 404 gift_unavailable，不区分原因；响应一律 no-store。
+func (s *Server) handleRevealGift(w http.ResponseWriter, r *http.Request) {
+	token, ok := readSessionCookie(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "session_invalid", "登录状态已失效，请重新登录")
+		return
+	}
+	payload, err := s.auth.ResolveSession(r.Context(), token)
+	if err != nil {
+		if !errors.Is(err, auth.ErrSessionInvalid) {
+			s.logger.Error("reveal_session_error",
+				slog.String("request_id", requestIDFromContext(r.Context())),
+				slog.String("error_class", "session_resolve"))
+			writeError(w, http.StatusInternalServerError, "internal_error", "服务暂时不可用，请稍后再试")
+			return
+		}
+		clearSessionCookie(w)
+		writeError(w, http.StatusUnauthorized, "session_invalid", "登录状态已失效，请重新登录")
+		return
+	}
+
+	var req revealRequest
+	if !decodeJSONBody(w, r, &req) {
+		return
+	}
+	if req.GiftID == "" || len(req.GiftID) > maxGiftIDLen {
+		writeError(w, http.StatusBadRequest, "bad_request", "请求不合法")
+		return
+	}
+
+	code, err := s.gift.RevealCode(r.Context(), payload.GroupID, req.GiftID)
+	switch {
+	case errors.Is(err, gift.ErrUnavailable):
+		writeError(w, http.StatusNotFound, "gift_unavailable", "礼物信息暂时无法读取，请刷新后重试")
+		return
+	case err != nil:
+		s.logger.Error("gift_reveal_error",
+			slog.String("request_id", requestIDFromContext(r.Context())),
+			slog.String("error_class", "gift_reveal"))
+		writeError(w, http.StatusInternalServerError, "internal_error", "服务暂时不可用，请稍后再试")
+		return
+	}
+
+	s.logger.Info("gift_revealed",
+		slog.String("request_id", requestIDFromContext(r.Context())))
+	writeJSON(w, http.StatusOK, revealResponse{Code: code})
 }
 
 // sessionPayload 把 auth.GroupPayload 转成对外 DTO；thanksMessage 为全局致谢语

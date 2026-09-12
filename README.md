@@ -2,7 +2,7 @@
 
 婚礼回礼卡登录与礼品展示服务。来宾扫码进入 `https://stg.costra.cloud/wedding/`，输入本名或昵称 + 8 位卡片密钥，查看本同行组的礼品激活码。
 
-设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），M3 数据、加密与管理能力、M4 鉴权与会话已完成本地实现与测试（G4 门禁项全部覆盖），下一步 M5 多礼品与来宾体验**。
+设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），M3 数据、加密与管理能力、M4 鉴权与会话、M5 多礼品与来宾体验均已完成本地实现与测试，下一步 M6 质量收口与正式开放**。
 
 ## 目录结构
 
@@ -15,10 +15,11 @@ internal/
   buildinfo/        编译期注入的版本信息
   cryptox/          app.key 加载、HKDF 派生、密钥 HMAC、礼品码 AEAD、会话令牌
   domain/           领域实体、登录名称规范化、数据契约校验（不依赖 HTTP/SQLite）
+  gift/             礼品码 reveal（归属校验 + 按需解密）
   httpx/            HTTP 路由与中间件（安全头、请求 ID、来源校验、限流、API）
   store/            SQLite 连接、migration、repository、BEGIN IMMEDIATE 绑定事务、online backup
 migrations/         SQL migration（go:embed 进二进制）
-web/                占位主页 + 静态资源（go:embed 进二进制）
+web/                单页应用（index.html + app.css + app.js，go:embed 进二进制）
 deploy/             共享机器 compose、nginx 插入片段、cron 单元样例
 ops/                构建、自检、部署、验证与本机备份脚本
 testdata/fixtures/  虚构数据包（M0 数据契约样例，无真实数据）
@@ -69,6 +70,7 @@ go run ./cmd/wedding backup create --output /path/to/wedding-backup.db
 | GET | `/api/bootstrap` | 服务文案 + 当前会话（同行组称呼/专属短句/礼品摘要）；无会话时 `session: null` |
 | POST | `/api/auth/login` | 名字或昵称 + 8 位密钥登录；首绑在 `BEGIN IMMEDIATE` 事务内完成；成功写 `wedding_session` Cookie |
 | POST | `/api/auth/logout` | 删除会话并清 Cookie；幂等 |
+| POST | `/api/gifts/reveal` | M5 起可用：按 `giftId` 返回本组某份礼品的明文激活码；需有效会话，跨组/未知 ID 统一 `404 + gift_unavailable`，响应 no-store |
 
 关键语义：
 
@@ -87,7 +89,21 @@ curl -c jar.txt -X POST http://127.0.0.1:3000/api/auth/login \
   -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:3000' \
   -d '{"loginName":"张伟","keyCode":"20260002"}'
 curl -b jar.txt http://127.0.0.1:3000/api/bootstrap
+# 逐份揭示礼品码（giftId 来自 bootstrap/login 响应的礼品摘要）
+curl -b jar.txt -X POST http://127.0.0.1:3000/api/gifts/reveal \
+  -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:3000' \
+  -d '{"giftId":"<礼品内部 ID>"}'
 ```
+
+## M5 多礼品与来宾体验
+
+单页应用（`web/`，全部相对路径，无前端框架/CDN/外部字体）：
+
+- 视觉按产品架构 §10.2 令牌：暖象牙底、灰粉酒红主色、香槟金装饰；卡片 20px 圆角、控件 12px、触控目标 ≥44px、主区域 ≤560px、`prefers-reduced-motion` 生效。
+- 状态机：初始化（加载态，不闪现礼品）→ 登录 → 同行组欢迎 + 多礼品列表 → 退出/会话失效回登录；bootstrap 失败进入维护态（`WEDDING_MAINTENANCE_TEXT`，可重试）。
+- 登录交互：格式就地拦截（空名称、非 8 位数字不发请求）、提交防重复与加载态、统一失败/限流/网络异常文案。
+- 礼品交互：初始全部遮罩；逐份"显示激活码"（reveal 接口）→"复制"（剪贴板 API，不可用时选中文本提示长按）→"隐藏"；退出、刷新或会话失效自动清空全部明文；动态内容一律 `textContent` 渲染。
+- 合规：页脚隐私短说明、联系提示、备案号链接均由 bootstrap 文案驱动（`WEDDING_PRIVACY_NOTE` 等）。
 
 ## 本地开发
 

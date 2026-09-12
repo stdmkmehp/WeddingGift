@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v1.7
+版本: v1.8
 日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -404,7 +404,7 @@ nginx 把浏览器的 `/wedding/...` 映射成应用内部 `/...`。
 | `POST` | `/api/gifts/reveal` | `/wedding/api/gifts/reveal` | 按 `giftId` 返回本组某份礼品码 | 会话 + 来源校验 |
 | `GET` | `/healthz` | `/wedding/healthz` | 进程与 SQLite 只读健康检查 | 通用状态 |
 
-使用 `POST` 揭示礼品码，避免预取和普通缓存触发。`giftId` 必须再次校验属于当前会话同行组，不能只信任前端列表。
+使用 `POST` 揭示礼品码，避免预取和普通缓存触发。`giftId` 必须再次校验属于当前会话同行组，不能只信任前端列表。M5 落地：`internal/gift` 负责归属校验与逐份解密；不存在/跨组/已停用统一 `404 + gift_unavailable` 同一响应体，无会话或会话失效 `401 + session_invalid` 并清 Cookie；响应一律 `no-store`（由统一 JSON 写出保证）。
 
 ### 9.2 请求与响应规则
 
@@ -725,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.8 | 2026-09-12 | M5 落地：`POST /api/gifts/reveal` 与 `internal/gift` 就位（归属校验 + 按需解密，跨组/未知统一 404）；文案字段补齐 `maintenance_text`（`WEDDING_MAINTENANCE_TEXT`）；前端单页应用按 §9.3 与产品 §10 实现（视觉令牌、登录/多礼品/异常态状态机、剪贴板降级、textContent 渲染），替代 M1 占位主页 |
 | v1.7 | 2026-09-12 | M4 落地：§8.2 明确 BEGIN IMMEDIATE 经专用连接显式事务实现；§9.4 会话收敛为固定 30 天有效期；§10.3 落地 Host 白名单 + Origin 同源校验与限流默认阈值；§15.2 healthz 接线 SQLite 只读检查；`bootstrap`/`login`/`logout` API 就位（礼品码 reveal 属 M5） |
 | v1.6 | 2026-09-12 | M3 落地：纯 Go 驱动 modernc.org/sqlite（经 `sql.Conn.Raw` 使用 SQLite online backup API）；§14.1 备份命令的 compose 路径修正为仓库实际布局 `/opt/wedding/deploy/compose.yaml` |
 | v1.5 | 2026-09-12 | 修正 secrets 目录属主缺陷：`/data/wedding/secrets` 及 `app.key` 属主为容器用户 65534（root:root `0700` 目录会阻止非 root 容器进程读取，M3 起必现）；§10.1/§13.1 补属主约定，同步 `ops/deploy-app.sh` 与 M2 手册 |

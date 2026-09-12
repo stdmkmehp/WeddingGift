@@ -67,6 +67,8 @@ type LoginResult struct {
 
 // GroupPayload 是登录/会话解析后向页面返回的同行组数据（不含礼品码）。
 type GroupPayload struct {
+	// GroupID 是内部 ID，仅供服务端做礼品归属校验（M5 reveal），不下发前端。
+	GroupID       string
 	Salutation    string
 	CustomMessage string
 	ExpiresAt     time.Time
@@ -156,6 +158,7 @@ func (s *Service) groupPayload(ctx context.Context, groupID, salutation, customM
 		return GroupPayload{}, errors.New("同行组无可用礼品数据")
 	}
 	return GroupPayload{
+		GroupID:       groupID,
 		Salutation:    salutation,
 		CustomMessage: customMessage,
 		ExpiresAt:     expiresAt,

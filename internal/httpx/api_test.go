@@ -412,6 +412,163 @@ func TestRateLimiterWindow(t *testing.T) {
 	}
 }
 
+// doReveal 发起一次带合法 Host/Origin 的 reveal 请求；cookie 可为 nil（无会话）。
+func doReveal(h http.Handler, cookie *http.Cookie, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/gifts/reveal", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://example.com")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// loginGiftIDs 登录并返回会话 Cookie 与本组礼品 ID 列表（按 ordinal 顺序）。
+func loginGiftIDs(t *testing.T, h http.Handler, name, keyCode string) (*http.Cookie, []string) {
+	t.Helper()
+	rec := doLogin(h, `{"loginName":"`+name+`","keyCode":"`+keyCode+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("登录失败: %s", rec.Body.String())
+	}
+	var body struct {
+		Session struct {
+			Gifts []struct {
+				ID string `json:"id"`
+			} `json:"gifts"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, g := range body.Session.Gifts {
+		ids = append(ids, g.ID)
+	}
+	return sessionCookieOf(t, rec), ids
+}
+
+// TestRevealGiftFlow 覆盖 WG-501 主路径：逐份揭示本组礼品、no-store、明文只走该通道。
+func TestRevealGiftFlow(t *testing.T) {
+	h, _ := newAPITestServer(t, nil)
+
+	cookie, ids := loginGiftIDs(t, h, "阿伟", "20260002")
+	if len(ids) != 3 {
+		t.Fatalf("G002 应有 3 份礼品，实际 %d", len(ids))
+	}
+	want := []string{"FAKETRAVEL002", "FAKEMOVIE003", "FAKECOFFEE004"}
+	for i, id := range ids {
+		rec := doReveal(h, cookie, `{"giftId":"`+id+`"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("第 %d 份 reveal 应 200，实际 %d: %s", i+1, rec.Code, rec.Body.String())
+		}
+		if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("reveal 响应必须 no-store，实际 %q", cc)
+		}
+		var body struct {
+			Code string `json:"code"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Code != want[i] {
+			t.Errorf("第 %d 份礼品码 = %q，期望 %q", i+1, body.Code, want[i])
+		}
+	}
+}
+
+// TestRevealGiftIsolation 跨组与未知 giftId 返回完全一致的 404，不区分原因。
+func TestRevealGiftIsolation(t *testing.T) {
+	h, _ := newAPITestServer(t, nil)
+
+	_, foreignIDs := loginGiftIDs(t, h, "阿伟", "20260002")
+	cookie, _ := loginGiftIDs(t, h, "王芳", "20260001")
+
+	recForeign := doReveal(h, cookie, `{"giftId":"`+foreignIDs[0]+`"}`)
+	recUnknown := doReveal(h, cookie, `{"giftId":"00000000000000000000000000000000"}`)
+	if recForeign.Code != http.StatusNotFound || recUnknown.Code != http.StatusNotFound {
+		t.Fatalf("跨组/未知 giftId 应均 404，实际 %d / %d", recForeign.Code, recUnknown.Code)
+	}
+	if recForeign.Body.String() != recUnknown.Body.String() {
+		t.Errorf("跨组与未知 giftId 响应体必须一致: %q vs %q", recForeign.Body.String(), recUnknown.Body.String())
+	}
+	if strings.Contains(recForeign.Body.String(), "FAKETRAVEL") || strings.Contains(recUnknown.Body.String(), "FAKETRAVEL") {
+		t.Error("失败响应绝不允许泄漏礼品码")
+	}
+}
+
+// TestRevealGiftSessionRequired 无会话/失效会话/退出后再 reveal 均 401。
+func TestRevealGiftSessionRequired(t *testing.T) {
+	h, _ := newAPITestServer(t, nil)
+
+	// 无会话。
+	if rec := doReveal(h, nil, `{"giftId":"abc"}`); rec.Code != http.StatusUnauthorized {
+		t.Errorf("无会话应 401，实际 %d", rec.Code)
+	}
+
+	cookie, ids := loginGiftIDs(t, h, "阿伟", "20260002")
+
+	// 退出登录。
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.Header.Set("Origin", "http://example.com")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("logout 应 200，实际 %d", rec.Code)
+	}
+
+	// 旧 Cookie 再 reveal：401 且响应要求清除 Cookie。
+	rec = doReveal(h, cookie, `{"giftId":"`+ids[0]+`"}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("退出后 reveal 应 401，实际 %d", rec.Code)
+	}
+	var cleared bool
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookieName && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("会话失效的 reveal 响应应清除会话 Cookie")
+	}
+}
+
+// TestRevealGiftGuards reveal 同样受来源校验与输入约束保护。
+func TestRevealGiftGuards(t *testing.T) {
+	h, _ := newAPITestServer(t, nil)
+	cookie, ids := loginGiftIDs(t, h, "阿伟", "20260002")
+
+	// 缺 Origin → 403。
+	req := httptest.NewRequest(http.MethodPost, "/api/gifts/reveal", strings.NewReader(`{"giftId":"`+ids[0]+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("缺 Origin 应 403，实际 %d", rec.Code)
+	}
+
+	// 空 giftId / 超长 giftId → 400。
+	for name, body := range map[string]string{
+		"空 giftId":  `{"giftId":""}`,
+		"超长 giftId": `{"giftId":"` + strings.Repeat("a", 65) + `"}`,
+	} {
+		if rec := doReveal(h, cookie, body); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s 应 400，实际 %d", name, rec.Code)
+		}
+	}
+
+	// GET 打 reveal 端点 → 404（不暴露 API 存在性）。
+	req = httptest.NewRequest(http.MethodGet, "/api/gifts/reveal", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("GET 打 reveal 应 404，实际 %d", rec.Code)
+	}
+}
+
 // TestExpiredSessionRejectedByAPI 会话过期后 bootstrap 返回 null 并清 Cookie。
 func TestExpiredSessionRejectedByAPI(t *testing.T) {
 	ctx := context.Background()

@@ -14,6 +14,7 @@ import (
 	"github.com/weddinggift/wedding/internal/auth"
 	"github.com/weddinggift/wedding/internal/buildinfo"
 	"github.com/weddinggift/wedding/internal/cryptox"
+	"github.com/weddinggift/wedding/internal/gift"
 	"github.com/weddinggift/wedding/internal/store"
 	"github.com/weddinggift/wedding/web"
 )
@@ -30,6 +31,8 @@ type Texts struct {
 	ContactHint   string
 	IcpFilingText string
 	IcpFilingURL  string
+	// MaintenanceText 是维护/到期状态的统一说明（M0 §3.1，WG-505）。
+	MaintenanceText string
 }
 
 // Deps 是 HTTP 服务的全部外部依赖，由 app.Serve 装配。
@@ -38,6 +41,8 @@ type Deps struct {
 	DB     *store.DB
 	Auth   *auth.Service
 	Crypto *cryptox.Service
+	// Gift 是 M5 礼品码 reveal 服务；nil 时按 DB+Crypto 构造默认实现。
+	Gift *gift.Service
 	// Texts 为文案配置（M0 §3.1）。
 	Texts Texts
 	// AllowedHosts 是 /api 接受的 Host 清单（不含端口；回环地址总是允许）。
@@ -53,6 +58,7 @@ type Server struct {
 	db           *store.DB
 	auth         *auth.Service
 	crypto       *cryptox.Service
+	gift         *gift.Service
 	texts        serviceTexts
 	allowedHosts []string
 	limiter      *RateLimiter
@@ -73,25 +79,32 @@ func New(deps Deps) (*Server, error) {
 		limiter = NewRateLimiter(10*time.Minute, 60, 10)
 	}
 
+	giftSvc := deps.Gift
+	if giftSvc == nil {
+		giftSvc = gift.New(deps.DB, deps.Crypto)
+	}
+
 	s := &Server{
 		logger:       logger,
 		db:           deps.DB,
 		auth:         deps.Auth,
 		crypto:       deps.Crypto,
+		gift:         giftSvc,
 		allowedHosts: deps.AllowedHosts,
 		limiter:      limiter,
 		startedAt:    time.Now().UTC(),
 	}
 	s.texts = serviceTexts{
-		CoupleNames:   deps.Texts.CoupleNames,
-		WeddingDate:   deps.Texts.WeddingDate,
-		HomeIntro:     deps.Texts.HomeIntro,
-		LoginHint:     deps.Texts.LoginHint,
-		ThanksMessage: deps.Texts.ThanksMessage,
-		PrivacyNote:   deps.Texts.PrivacyNote,
-		ContactHint:   deps.Texts.ContactHint,
-		IcpFilingText: deps.Texts.IcpFilingText,
-		IcpFilingURL:  deps.Texts.IcpFilingURL,
+		CoupleNames:     deps.Texts.CoupleNames,
+		WeddingDate:     deps.Texts.WeddingDate,
+		HomeIntro:       deps.Texts.HomeIntro,
+		LoginHint:       deps.Texts.LoginHint,
+		ThanksMessage:   deps.Texts.ThanksMessage,
+		PrivacyNote:     deps.Texts.PrivacyNote,
+		ContactHint:     deps.Texts.ContactHint,
+		IcpFilingText:   deps.Texts.IcpFilingText,
+		IcpFilingURL:    deps.Texts.IcpFilingURL,
+		MaintenanceText: deps.Texts.MaintenanceText,
 	}
 
 	mux := http.NewServeMux()
@@ -111,6 +124,7 @@ func New(deps Deps) (*Server, error) {
 	mux.HandleFunc("GET /api/bootstrap", s.withGuard(s.handleBootstrap))
 	mux.HandleFunc("POST /api/auth/login", s.withGuard(s.handleLogin))
 	mux.HandleFunc("POST /api/auth/logout", s.withGuard(s.handleLogout))
+	mux.HandleFunc("POST /api/gifts/reveal", s.withGuard(s.handleRevealGift))
 
 	// 占位主页：仅根路径返回单页，其余未知路径 404。
 	mux.HandleFunc("GET /", s.handleIndex)

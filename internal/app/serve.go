@@ -13,6 +13,7 @@ import (
 	"github.com/weddinggift/wedding/internal/auth"
 	"github.com/weddinggift/wedding/internal/buildinfo"
 	"github.com/weddinggift/wedding/internal/cryptox"
+	"github.com/weddinggift/wedding/internal/gift"
 	"github.com/weddinggift/wedding/internal/httpx"
 	"github.com/weddinggift/wedding/internal/store"
 )
@@ -59,6 +60,7 @@ func Serve(cfg Config, logger *slog.Logger) error {
 		DB:           db,
 		Auth:         auth.New(db, cx),
 		Crypto:       cx,
+		Gift:         gift.New(db, cx),
 		Texts:        cfg.Texts,
 		AllowedHosts: cfg.AllowedHosts,
 	})

@@ -234,6 +234,24 @@ type GiftSummary struct {
 	Ordinal       int
 }
 
+// GiftCodeCiphertext 返回指定礼品在当前同行组下的激活码密文（WG-501 reveal 通道）。
+// 礼品不存在、不属于该组或已停用都返回 (nil, false, nil)——调用方不得向外区分原因。
+func (d *DB) GiftCodeCiphertext(ctx context.Context, groupID, giftID string) ([]byte, bool, error) {
+	var blob []byte
+	err := d.db.QueryRowContext(ctx, `
+		SELECT code_ciphertext FROM gift_item
+		WHERE id = ? AND group_id = ? AND status = 'active'`,
+		giftID, groupID,
+	).Scan(&blob)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("查询礼品码密文失败: %w", err)
+	}
+	return blob, true, nil
+}
+
 // GiftSummariesForGroup 返回同行组全部 active 礼品的展示摘要，按 ordinal 升序。
 // 实例级覆盖字段优先于类型默认值（空串表示未覆盖，见数据契约 §2.6）。
 func (d *DB) GiftSummariesForGroup(ctx context.Context, groupID string) ([]GiftSummary, error) {
