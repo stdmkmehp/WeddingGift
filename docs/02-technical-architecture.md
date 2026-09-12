@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v2.0
+版本: v2.1
 日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -649,7 +649,7 @@ flowchart LR
 ### 17.3 回滚
 
 - **无 schema 变化**：切回上一镜像，重建 `wedding-app`，热加载 nginx并冒烟。
-- **migration 或数据导入失败**：保持停机，使用发布前本机备份人工恢复，或根据离线数据重新建库。用备份恢复后可选择清空 `SESSION` 表，强制所有来宾重新登录，避免旧会话状态干扰。
+- **migration 或数据导入失败**：保持停机，用 `ops/restore-db.sh` 从本机备份恢复（体检、兜底备份、停服替换、migrate 前滚、健康检查与失败自动回滚均由脚本完成），或根据离线数据重新建库（`ops/reset-db.sh` 清库后重新导入）。用备份恢复后可选择清空 `SESSION` 表，强制所有来宾重新登录，避免旧会话状态干扰。
 - **nginx 校验失败**：不 reload，恢复修改前备份并重新校验。
 - **首次链路失败**：删除 WeddingGift location，`nginx -t` 后热加载；Costra 其余配置不动。
 
@@ -725,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§17.3 回滚改走脚本 |
 | v2.0 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置），§5/§13.1/§14.1/§17.4 全部引用同步更新 |
 | v1.9 | 2026-09-12 | M6 本地部分落地：§16 测试策略收口为 `ops/test.sh` 一条命令（WG-601，含 `internal/httpx/security_test.go` 安全回归与来宾旅程 E2E）；WG-602 安全与共享边界核对完成（`docs/06-m6-security-review.md`，含 2026-09-12 同源/根 Service Worker 公网实证）；compose 落地 `/data/wedding/import` 只读挂载（§13.1 表既有目录的挂载补齐，供 WG-603 真实数据导入）；WG-603/604 上机手册 `docs/06-m6-runbook.md` 与 `ops/canary-smoke.sh` 就位 |
 | v1.8 | 2026-09-12 | M5 落地：`POST /api/gifts/reveal` 与 `internal/gift` 就位（归属校验 + 按需解密，跨组/未知统一 404）；文案字段补齐 `maintenance_text`（`WEDDING_MAINTENANCE_TEXT`）；前端单页应用按 §9.3 与产品 §10 实现（视觉令牌、登录/多礼品/异常态状态机、剪贴板降级、textContent 渲染），替代 M1 占位主页 |

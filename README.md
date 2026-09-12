@@ -73,7 +73,7 @@ go run ./cmd/wedding key revoke --ref K001
 go run ./cmd/wedding backup create --output /path/to/wedding-backup.db
 ```
 
-本机 cron 备份（staging）：`install -m 0644 -o root -g root deploy/wedding.cron /etc/cron.d/wedding`，每小时 `:44` 由 `ops/backup.sh` 通过容器内二进制产出备份并保留最近 72 份；不修改 Costra 的 cron 文件。
+本机 cron 备份（staging）：`install -m 0644 -o root -g root deploy/wedding.cron /etc/cron.d/wedding`，每小时 `:44` 由 `ops/backup.sh` 通过容器内二进制产出备份并保留最近 72 份；不修改 Costra 的 cron 文件。备份还原用 `ops/restore-db.sh`（缺省取最新备份，还原前自动兜底备份，失败自动回滚）；测试循环的清库重导用 `ops/reset-db.sh`（清库前自动备份，停服删库后 migrate 重建 schema）。
 
 ## M4 鉴权与会话
 
