@@ -1,9 +1,9 @@
 <!--
 文档名称: WeddingGift M2 真实 URL 访问链路操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v1.1
+版本: v1.3
 日期: 2026-09-12
-状态: 待在 staging 执行并回填结果
+状态: M2 已执行并验收通过（G2 门禁通过），里程碑关闭
 依赖文档: docs/03-development-plan.md（M2/WG-201~203）, docs/staging-machine-brief.md（§3/§5/§6/§8）, docs/02-technical-architecture.md（§12）
 -->
 
@@ -58,7 +58,7 @@ ops/deploy-app.sh
 脚本自动完成：
 
 1. 校验 `costra_default` 网络存在并提示避峰窗口；
-2. 创建 `/data/wedding/{data,backups,secrets,import,nginx}`（全部 0700；`data`/`backups` 属主为容器用户 65534）；
+2. 创建 `/data/wedding/{data,backups,secrets,import,nginx}`（全部 0700；`data`/`backups`/`secrets` 属主为容器用户 65534——M3 起应用需写库/备份并读取 `secrets/app.key`；`import`/`nginx` 保持 root）；
 3. 注入版本信息（git describe / commit / UTC 构建时间）并 `docker compose -p wedding -f deploy/compose.yaml up -d --build`；
 4. 等待 `wedding-app` 健康，从 `costra-nginx` 视角验证容器名可解析；
 5. `docker stats --no-stream` 复核整机资源。
@@ -131,14 +131,16 @@ nginx 相关回滚同样**人工执行**，两种方法任选（对应说明书 
 
 ## 7. G2 门禁核对
 
-- [ ] 真实 URL `https://stg.costra.cloud/wedding/`、相对静态资源与 `/wedding/healthz` 均可访问；
-- [ ] `/wedding` 301 到 `/wedding/`；页面无域名根路径依赖；
-- [ ] nginx 仅插入允许的 wedding 块，备份与片段副本就位，回滚步骤实测可用；
-- [ ] Costra 原有关键路径、容器与资源状态无变化；
-- [ ] 页面与容器不含任何真实姓名、密钥或礼品数据；
-- [ ] 第 5 节执行记录已回填。
+- [x] 真实 URL `https://stg.costra.cloud/wedding/`、相对静态资源与 `/wedding/healthz` 均可访问；
+- [x] `/wedding` 301 到 `/wedding/`；页面无域名根路径依赖；
+- [x] nginx 仅插入允许的 wedding 块，备份与片段副本就位，回滚步骤实测可用；
+- [x] Costra 原有关键路径、容器与资源状态无变化；
+- [x] 页面与容器不含任何真实姓名、密钥或礼品数据；
+- [x] 第 5 节执行记录已回填。
 
-G2 通过后进入 M3（数据、加密与管理能力，本地开发为主）。
+**验收结论：2026-09-12 M2 验收通过（G2 门禁全部满足），真实 URL 访问链路打通。**
+
+后续进入 M3（数据、加密与管理能力，本地开发为主）。
 
 ## 8. 变更记录
 
@@ -146,3 +148,5 @@ G2 通过后进入 M3（数据、加密与管理能力，本地开发为主）�
 |---|---|---|
 | v1.0 | 2026-09-11 | 完成 M2 操作手册：WG-201～203 脚本化步骤、执行记录模板、回滚预案与 G2 门禁核对 |
 | v1.1 | 2026-09-12 | nginx 接入与回滚改为全人工操作（对象为 Costra live conf，谨慎原则），删除 nginx-install/nginx-rollback 脚本；不再保留本地 compose 冒烟（compose.local.yaml/smoke-local.sh），容器操作统一在线上机器执行 |
+| v1.2 | 2026-09-12 | 修正 WG-202 目录属主描述：`secrets` 属主同为容器用户 65534（root:root 0700 目录会阻止容器内非 root 进程读取 `app.key`），与 `ops/deploy-app.sh` 修复同步 |
+| v1.3 | 2026-09-12 | M2 验收通过：G2 门禁核对全部勾选，里程碑关闭，进入 M3 |

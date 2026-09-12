@@ -2,7 +2,7 @@
 
 婚礼回礼卡登录与礼品展示服务。来宾扫码进入 `https://stg.costra.cloud/wedding/`，输入本名或昵称 + 8 位卡片密钥，查看本同行组的礼品激活码。
 
-设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页已在 staging 冒烟通过，M2 真实 URL 链路就绪、待上机执行**（见 `docs/05-m2-runbook.md`）。
+设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），下一步 M3 数据与管理能力**。
 
 ## 目录结构
 
