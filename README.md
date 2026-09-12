@@ -2,7 +2,7 @@
 
 婚礼回礼卡登录与礼品展示服务。来宾扫码进入 `https://stg.costra.cloud/wedding/`，输入本名或昵称 + 8 位卡片密钥，查看本同行组的礼品激活码。
 
-设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），M3 数据、加密与管理能力、M4 鉴权与会话、M5 多礼品与来宾体验均已完成本地实现与测试，下一步 M6 质量收口与正式开放**。
+设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），M3 数据、加密与管理能力、M4 鉴权与会话、M5 多礼品与来宾体验均已完成本地实现与测试；M6 本地部分已完成（WG-601 自动化回归、WG-602 安全核对），上机部分手册就绪（WG-603 真实数据导入、WG-604 发布与冒烟，见 `docs/06-m6-runbook.md`），待执行正式开放**。
 
 ## 目录结构
 
@@ -23,8 +23,24 @@ web/                单页应用（index.html + app.css + app.js，go:embed 进�
 deploy/             共享机器 compose、nginx 插入片段、cron 单元样例
 ops/                构建、自检、部署、验证与本机备份脚本
 testdata/fixtures/  虚构数据包（M0 数据契约样例，无真实数据）
-docs/               需求 / 产品 / 技术 / 开发计划 / M0 决策 / M2 手册
+docs/               需求 / 产品 / 技术 / 开发计划 / M0 决策 / M2 手册 / M6 安全核对与手册
 ```
+
+## M6 质量收口与正式开放
+
+本地部分（已完成）：
+
+```sh
+# WG-601 一条命令核心自动化回归：gofmt / go vet / go test -race（单元、数据校验、
+# repository、绑定一致性、HTTP、安全回归、来宾旅程 E2E）/ 发布形态静态构建 /
+# fixtures 契约自检 / 前端静态检查（路径纪律、危险 API、外部资源白名单）/ 秘密扫描
+ops/test.sh
+```
+
+- WG-602 安全与共享边界核对：SQL 注入、XSS、枚举差异、会话撤销、缓存、日志泄密、秘密扫描逐项通过，同网/同源残余风险已确认（2026-09-12 公网实证），见 `docs/06-m6-security-review.md`。
+- `ops/verify-public.sh` 已升级为 M5 真实单页检查（原 M2「链路验证」字样检查已替换），新增 bootstrap API、防护、安全响应头共 25 项；`ops/canary-smoke.sh` 为 canary API 冒烟（22 项断言，含 Cookie Path `/wedding/` 收编验证）。
+
+上机部分（手册见 `docs/06-m6-runbook.md`）：真实数据包（含 canary 模板）本地 dry-run → staging 构建新镜像 → migrate → 上机 validate → 单事务 import → 数量核对 → 发布前回滚点（数据库 + nginx 备份）→ 启动正式服务 → nginx 热加载 → `verify-public.sh` + `canary-smoke.sh` + 三目标浏览器人工冒烟 → 安装独立 cron `/etc/cron.d/wedding` 并验证备份轮转 → 明文源文件移出服务器。
 
 ## M3 数据与管理能力
 

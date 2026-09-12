@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v1.8
+版本: v1.9
 日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -725,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.9 | 2026-09-12 | M6 本地部分落地：§16 测试策略收口为 `ops/test.sh` 一条命令（WG-601，含 `internal/httpx/security_test.go` 安全回归与来宾旅程 E2E）；WG-602 安全与共享边界核对完成（`docs/06-m6-security-review.md`，含 2026-09-12 同源/根 Service Worker 公网实证）；compose 落地 `/data/wedding/import` 只读挂载（§13.1 表既有目录的挂载补齐，供 WG-603 真实数据导入）；WG-603/604 上机手册 `docs/06-m6-runbook.md` 与 `ops/canary-smoke.sh` 就位 |
 | v1.8 | 2026-09-12 | M5 落地：`POST /api/gifts/reveal` 与 `internal/gift` 就位（归属校验 + 按需解密，跨组/未知统一 404）；文案字段补齐 `maintenance_text`（`WEDDING_MAINTENANCE_TEXT`）；前端单页应用按 §9.3 与产品 §10 实现（视觉令牌、登录/多礼品/异常态状态机、剪贴板降级、textContent 渲染），替代 M1 占位主页 |
 | v1.7 | 2026-09-12 | M4 落地：§8.2 明确 BEGIN IMMEDIATE 经专用连接显式事务实现；§9.4 会话收敛为固定 30 天有效期；§10.3 落地 Host 白名单 + Origin 同源校验与限流默认阈值；§15.2 healthz 接线 SQLite 只读检查；`bootstrap`/`login`/`logout` API 就位（礼品码 reveal 属 M5） |
 | v1.6 | 2026-09-12 | M3 落地：纯 Go 驱动 modernc.org/sqlite（经 `sql.Conn.Raw` 使用 SQLite online backup API）；§14.1 备份命令的 compose 路径修正为仓库实际布局 `/opt/wedding/deploy/compose.yaml` |
