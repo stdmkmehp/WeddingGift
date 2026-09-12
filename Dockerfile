@@ -5,7 +5,7 @@ FROM golang:1.27-alpine AS build
 
 WORKDIR /src
 
-# 先复制依赖清单以利用缓存；M1 无外部依赖，go.sum 可能不存在。
+# 先复制依赖清单以利用缓存（M3 起有外部依赖，go.sum 必然存在；保留可选语法兼容早期分支）。
 COPY go.mod ./
 COPY go.su[m] ./
 RUN go mod download

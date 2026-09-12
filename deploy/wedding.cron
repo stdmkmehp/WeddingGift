@@ -1,0 +1,17 @@
+# /etc/cron.d/wedding —— WeddingGift 本机备份 cron 单元（仓库副本）
+#
+# 纪律（staging-machine-brief.md §5.1(3) 与技术架构 §14）：
+#   - 必须保持独立文件；不得写入或修改 Costra 的 /etc/cron.d/costra-standby、
+#     /etc/cron.d/costra-analyze；到期拆除时直接删除本文件。
+#   - 每小时 :44 触发，避开既有窗口：整点 00/06/12/18 从库 pg_dump、:47 主从
+#     健康检查、06:27 staging 刷新、23:5x 分析窗口。WeddingGift 备份为秒级
+#     SQLite online backup，与这些任务无实质竞争。执行频率与保留份数
+#     （ops/backup.sh 中 KEEP=72）均为上线前可调整的简单配置。
+#
+# 安装（在 staging 上执行）：
+#   install -m 0644 -o root -g root /opt/wedding/deploy/wedding.cron /etc/cron.d/wedding
+#
+# 输出纪律：备份日志追加到 /data/wedding/backups/backup.log（目录收束约定，
+# 不落地到其他位置）；失败仅本机可查，不建设外部告警（技术架构 §14.2）。
+
+44 * * * * root /opt/wedding/ops/backup.sh >> /data/wedding/backups/backup.log 2>&1
