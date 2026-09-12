@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v1.6
+版本: v1.7
 日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -380,7 +380,7 @@ sequenceDiagram
 
 ### 8.2 实现约束
 
-- `BEGIN IMMEDIATE` 和 `UNIQUE(access_keys.group_id)` 同时保护一对一关系。
+- `BEGIN IMMEDIATE` 和 `UNIQUE(access_keys.group_id)` 同时保护一对一关系。M4 落地方式：`database/sql` 的 `BeginTx` 对 SQLite 是 DEFERRED 事务，因此 `store.BeginImmediate` 在专用连接上显式执行 `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK`，语义与 `sql.Tx` 等价且拿到写锁后才开始读写。
 - 首次绑定使用带条件的 `UPDATE`，只允许从 `group_id IS NULL` 变为目标组。
 - 访客请求永不修改非空 `group_id`，也不提供解绑接口。
 - 同一请求重试不会产生第二条绑定；提交后断网时，使用同组信息重试仍成功。
@@ -435,8 +435,8 @@ Path: /wedding/  （由 nginx `proxy_cookie_path / /wedding/` 统一收编；应
 ```
 
 - Cookie 只保存至少 256 bit 的随机令牌；数据库存令牌 SHA-256 摘要。
-- 默认 7 天闲置过期、30 天绝对过期，可在实现前收敛为一个固定有效期。
-- 每次读取会话时确认关联密钥仍为 active。
+- M4 已按本节授权收敛为**固定 30 天有效期**（`auth.SessionTTL`），不做滑动续期：覆盖完整婚礼窗口且实现最简；令牌值以 base64url 编码放入 Cookie。
+- 每次读取会话时确认关联密钥仍为 active（同时校验同行组仍为 active）。
 - 不使用 `localStorage`、IndexedDB 或 Service Worker 保存会话与礼品码。
 
 ## 10. 必要安全设计
@@ -459,9 +459,9 @@ Path: /wedding/  （由 nginx `proxy_cookie_path / /wedding/` 统一收编；应
 
 ### 10.3 登录防护
 
-- JSON 内容类型、同源 `Origin`/`Host` 校验共同阻止普通跨站表单提交。
+- JSON 内容类型、同源 `Origin`/`Host` 校验共同阻止普通跨站表单提交。M4 落地：`/api` 要求 Host 命中白名单（`WEDDING_ALLOWED_HOSTS`，默认 `stg.costra.cloud`，回环地址总是允许）；非 GET 请求必须携带 `Origin` 且其 host 与请求 Host 一致。
 - 使用简单、有界的单实例内存限流：按来源 IP 和失败的密钥摘要限制登录尝试。
-- 阈值以不误伤婚礼现场共享 NAT 为前提，例如单 IP 10 分钟 60 次失败、单密钥 10 分钟 10 次失败。
+- 阈值以不误伤婚礼现场共享 NAT 为前提，M4 落地为单 IP 10 分钟 60 次失败、单密钥 10 分钟 10 次失败（滑动窗口，map 触顶 4096 键时整体清空该维度）。
 - 应用重启后限流状态清空可以接受；不引入 Redis 或 CAPTCHA。
 
 ### 10.4 响应头和运行权限
@@ -599,7 +599,7 @@ duration_ms, internal_group_ref, internal_key_ref, error_class, build_version
 ### 15.2 健康与人工检查
 
 - Docker healthcheck 调用容器内 `wedding healthz-check`（应用二进制自带子命令，向本地 `/healthz` 发请求并按退出码返回），不依赖镜像内的 curl/wget，兼容 distroless/scratch 精简镜像。
-- 健康检查只验证进程、schema 版本和 SQLite 简单只读查询。
+- 健康检查只验证进程、schema 版本和 SQLite 简单只读查询。M4 起 `/healthz` 已接线数据库：Ping 与 schema 版本只读检查失败时返回 503。
 - 外部人工检查访问 `/wedding/`，不自动尝试真实登录。
 - 发布后执行一次 `docker stats --no-stream`，确认未超过资源上限。
 - 日志由 Docker `50m × 3` 自动轮转；不部署 Prometheus、ELK 或新的监控栈。
@@ -725,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.7 | 2026-09-12 | M4 落地：§8.2 明确 BEGIN IMMEDIATE 经专用连接显式事务实现；§9.4 会话收敛为固定 30 天有效期；§10.3 落地 Host 白名单 + Origin 同源校验与限流默认阈值；§15.2 healthz 接线 SQLite 只读检查；`bootstrap`/`login`/`logout` API 就位（礼品码 reveal 属 M5） |
 | v1.6 | 2026-09-12 | M3 落地：纯 Go 驱动 modernc.org/sqlite（经 `sql.Conn.Raw` 使用 SQLite online backup API）；§14.1 备份命令的 compose 路径修正为仓库实际布局 `/opt/wedding/deploy/compose.yaml` |
 | v1.5 | 2026-09-12 | 修正 secrets 目录属主缺陷：`/data/wedding/secrets` 及 `app.key` 属主为容器用户 65534（root:root `0700` 目录会阻止非 root 容器进程读取，M3 起必现）；§10.1/§13.1 补属主约定，同步 `ops/deploy-app.sh` 与 M2 手册 |
 | v1.4 | 2026-09-11 | 备份改为每小时 `:44` 触发、保留 72 份，明确宿主机 cron 以独立 `/etc/cron.d/wedding` 落地并写入避峰推导；补 `wedding healthz-check` 子命令供 distroless 健康检查；写清 nginx 2m 与应用 8KB 请求体为纵深防御；Cookie Path 统一 `/wedding/`；强调 `app.key` 离线保管重要性；恢复后可清空 SESSION；目录收束到 `/opt/wedding` 与 `/data/wedding` 并同步拆除清单 |

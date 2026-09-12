@@ -2,7 +2,7 @@
 
 婚礼回礼卡登录与礼品展示服务。来宾扫码进入 `https://stg.costra.cloud/wedding/`，输入本名或昵称 + 8 位卡片密钥，查看本同行组的礼品激活码。
 
-设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），M3 数据、加密与管理能力已完成本地实现与测试（G3 门禁项全部覆盖），下一步 M4 鉴权与会话**。
+设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页、M2 真实 URL 链路均已在 staging 验收通过（G2 门禁通过，见 `docs/05-m2-runbook.md`），M3 数据、加密与管理能力、M4 鉴权与会话已完成本地实现与测试（G4 门禁项全部覆盖），下一步 M5 多礼品与来宾体验**。
 
 ## 目录结构
 
@@ -11,11 +11,12 @@ cmd/wedding/        单二进制入口（serve / migrate / data / status / key /
 internal/
   app/              配置、serve 生命周期、健康检查子命令
   admin/            数据文件装载、脱敏核对报告、状态文本
+  auth/             登录决策、一对一绑定编排、会话创建/解析/退出（统一模糊错误）
   buildinfo/        编译期注入的版本信息
   cryptox/          app.key 加载、HKDF 派生、密钥 HMAC、礼品码 AEAD、会话令牌
   domain/           领域实体、登录名称规范化、数据契约校验（不依赖 HTTP/SQLite）
-  httpx/            HTTP 路由与中间件（安全头、请求 ID、访问日志）
-  store/            SQLite 连接、migration、repository、online backup
+  httpx/            HTTP 路由与中间件（安全头、请求 ID、来源校验、限流、API）
+  store/            SQLite 连接、migration、repository、BEGIN IMMEDIATE 绑定事务、online backup
 migrations/         SQL migration（go:embed 进二进制）
 web/                占位主页 + 静态资源（go:embed 进二进制）
 deploy/             共享机器 compose、nginx 插入片段、cron 单元样例
@@ -57,6 +58,37 @@ go run ./cmd/wedding backup create --output /path/to/wedding-backup.db
 
 本机 cron 备份（staging）：`install -m 0644 -o root -g root deploy/wedding.cron /etc/cron.d/wedding`，每小时 `:44` 由 `ops/backup.sh` 通过容器内二进制产出备份并保留最近 72 份；不修改 Costra 的 cron 文件。
 
+## M4 鉴权与会话
+
+`serve` 自 M4 起完整接线：启动时打开数据库（要求已 `migrate`）并加载 `app.key`，缺一即退出。
+
+公网 API（浏览器路径 `/wedding/api/...`，nginx 抹前缀后应用见 `/api/...`）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/bootstrap` | 服务文案 + 当前会话（同行组称呼/专属短句/礼品摘要）；无会话时 `session: null` |
+| POST | `/api/auth/login` | 名字或昵称 + 8 位密钥登录；首绑在 `BEGIN IMMEDIATE` 事务内完成；成功写 `wedding_session` Cookie |
+| POST | `/api/auth/logout` | 删除会话并清 Cookie；幂等 |
+
+关键语义：
+
+- 失败统一模糊：名称无效、密钥无效/停用、跨组、组已有其他密钥，外部均为 `401 + auth_failed` 同一文案；仅格式错误（公开规则）返回 `400 + invalid_input`。
+- 会话为 256 bit 随机令牌，数据库存 SHA-256 摘要；固定 30 天有效期（§9.4 授权的收敛决策）；密钥停用或组停用后既有会话立即失效。
+- 防护：/api 要求 Host 白名单（`WEDDING_ALLOWED_HOSTS`，回环地址总是允许）+ 非 GET 必带同源 Origin；JSON 8 KB 上限、拒绝未知字段；登录按 IP（10 分钟 60 次失败）与密钥摘要（10 分钟 10 次失败）双维度内存限流。
+- 文案由环境变量配置（`WEDDING_COUPLE_NAMES`、`WEDDING_THANKS_MESSAGE` 等，默认 M0 占位值）。
+
+本地冒烟：
+
+```sh
+export WEDDING_DB_PATH=./local.db WEDDING_APP_KEY_PATH=./app.key WEDDING_ALLOWED_HOSTS=127.0.0.1
+go run ./cmd/wedding migrate && go run ./cmd/wedding data import --dir testdata/fixtures
+go run ./cmd/wedding serve &
+curl -c jar.txt -X POST http://127.0.0.1:3000/api/auth/login \
+  -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:3000' \
+  -d '{"loginName":"张伟","keyCode":"20260002"}'
+curl -b jar.txt http://127.0.0.1:3000/api/bootstrap
+```
+
 ## 本地开发
 
 需要 Go 1.27+。
@@ -69,7 +101,8 @@ go test ./...
 go vet ./...
 gofmt -l .
 
-# 本地运行占位主页
+# 本地运行（M4 起需先准备 app.key 并完成 migrate/import，见上文 M3/M4 段）
+export WEDDING_DB_PATH=./local.db WEDDING_APP_KEY_PATH=./app.key
 go run ./cmd/wedding serve
 # 默认监听 :3000，可用 WEDDING_LISTEN_ADDR 覆盖
 # 访问 http://127.0.0.1:3000/

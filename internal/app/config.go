@@ -1,7 +1,12 @@
 // Package app 负责应用配置、生命周期装配与子命令实现。
 package app
 
-import "os"
+import (
+	"os"
+	"strings"
+
+	"github.com/weddinggift/wedding/internal/httpx"
+)
 
 // Config 是从环境变量读取的运行配置。
 type Config struct {
@@ -11,15 +16,31 @@ type Config struct {
 	DBPath string
 	// AppKeyPath 是应用主秘密 app.key 的路径（密钥 HMAC 与礼品码 AEAD 由此派生）。
 	AppKeyPath string
+	// AllowedHosts 是 /api 接受的 Host 清单（不含端口）；回环地址总是允许。
+	AllowedHosts []string
+	// Texts 是 M0 §3.1 冻结的文案字段（占位默认，真实文案上线前用环境变量覆盖）。
+	Texts httpx.Texts
 }
 
 // LoadConfig 从环境变量读取配置并填充默认值。
 // 默认值对齐共享机器目录收束约定（/data/wedding/...）；本地开发用环境变量覆盖。
 func LoadConfig() Config {
 	return Config{
-		ListenAddr: envOr("WEDDING_LISTEN_ADDR", ":3000"),
-		DBPath:     envOr("WEDDING_DB_PATH", "/data/wedding/data/wedding.db"),
-		AppKeyPath: envOr("WEDDING_APP_KEY_PATH", "/data/wedding/secrets/app.key"),
+		ListenAddr:   envOr("WEDDING_LISTEN_ADDR", ":3000"),
+		DBPath:       envOr("WEDDING_DB_PATH", "/data/wedding/data/wedding.db"),
+		AppKeyPath:   envOr("WEDDING_APP_KEY_PATH", "/data/wedding/secrets/app.key"),
+		AllowedHosts: splitAndTrim(envOr("WEDDING_ALLOWED_HOSTS", "stg.costra.cloud")),
+		Texts: httpx.Texts{
+			CoupleNames:   envOr("WEDDING_COUPLE_NAMES", "示例新人"),
+			WeddingDate:   envOr("WEDDING_DATE", "2026-10-01"),
+			HomeIntro:     envOr("WEDDING_HOME_INTRO", "感谢你来见证我们的幸福时刻"),
+			LoginHint:     envOr("WEDDING_LOGIN_HINT", "请输入你的名字或昵称，以及卡片上的 8 位数字"),
+			ThanksMessage: envOr("WEDDING_THANKS_MESSAGE", "谢谢你的祝福，这是我们为你准备的小小心意"),
+			PrivacyNote:   envOr("WEDDING_PRIVACY_NOTE", "本页仅用于展示回礼，我们只收集识别所需的信息，活动结束后删除。"),
+			ContactHint:   envOr("WEDDING_CONTACT_HINT", "如有疑问，请通过婚礼当日联系人咨询。"),
+			IcpFilingText: envOr("WEDDING_ICP_FILING_TEXT", "沪ICP备2026017253号-2"),
+			IcpFilingURL:  envOr("WEDDING_ICP_FILING_URL", "https://beian.miit.gov.cn/"),
+		},
 	}
 }
 
@@ -38,4 +59,14 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func splitAndTrim(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -286,5 +286,7 @@ func usage() {
   WEDDING_LISTEN_ADDR    HTTP 监听地址，默认 ":3000"
   WEDDING_DB_PATH        SQLite 数据库路径，默认 "/data/wedding/data/wedding.db"
   WEDDING_APP_KEY_PATH   app.key 路径，默认 "/data/wedding/secrets/app.key"
+  WEDDING_ALLOWED_HOSTS  /api 接受的 Host 白名单（逗号分隔），默认 "stg.costra.cloud"
+  WEDDING_*文案变量       WEDDING_COUPLE_NAMES / WEDDING_DATE / WEDDING_THANKS_MESSAGE 等（M0 §3.1）
 `)
 }
