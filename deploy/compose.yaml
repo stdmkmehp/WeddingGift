@@ -9,8 +9,8 @@
 #   - 非 root、只读 rootfs、tmpfs /tmp、cap_drop ALL、no-new-privileges
 #   - 仅挂载 /data/wedding 下自有目录；secrets 只读
 #
-# 部署时通过 `docker compose -p wedding -f deploy/compose.yaml ...` 使用。
-# 本地开发验证可用 deploy/compose.local.yaml（不依赖 costra_default 与真实目录）。
+# 部署时通过 `docker compose -p wedding -f deploy/compose.yaml ...` 使用（通常由 ops/deploy-app.sh 驱动）。
+# 容器操作统一在共享机器执行，不保留本地 compose。
 
 name: wedding
 
@@ -19,6 +19,11 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        # 由 ops/deploy-app.sh 注入 git 版本；直接 compose build 时回退默认值。
+        VERSION: ${WEDDING_VERSION:-dev}
+        COMMIT: ${WEDDING_COMMIT:-unknown}
+        BUILD_TIME: ${WEDDING_BUILD_TIME:-unknown}
     image: wedding-app:latest
     container_name: wedding-app
     restart: unless-stopped

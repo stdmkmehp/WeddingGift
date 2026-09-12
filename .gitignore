@@ -20,6 +20,9 @@ app.key
 # 本机备份产物
 /backups/
 
+# M2 staging 自检记录（含机器现状信息，留档于 staging 本地，不进 Git）
+/ops/records/
+
 # IDE / OS
 .DS_Store
 .idea/

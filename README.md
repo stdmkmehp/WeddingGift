@@ -2,7 +2,7 @@
 
 婚礼回礼卡登录与礼品展示服务。来宾扫码进入 `https://stg.costra.cloud/wedding/`，输入本名或昵称 + 8 位卡片密钥，查看本同行组的礼品激活码。
 
-设计与规则以 `docs/` 与 `staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页已完成**。
+设计与规则以 `docs/` 与 `docs/staging-machine-brief.md` 为事实源。当前进度：**M0 已冻结，M1 最小工程与占位主页已在 staging 冒烟通过，M2 真实 URL 链路就绪、待上机执行**（见 `docs/05-m2-runbook.md`）。
 
 ## 目录结构
 
@@ -13,8 +13,8 @@ internal/
   buildinfo/        编译期注入的版本信息
   httpx/            HTTP 路由与中间件（安全头、请求 ID、访问日志）
 web/                占位主页 + 静态资源（go:embed 进二进制）
-deploy/             compose（共享机器 + 本地）与 nginx 片段
-ops/                构建与冒烟脚本
+deploy/             共享机器 compose 与 nginx 插入片段
+ops/                构建、自检、部署与验证脚本
 testdata/fixtures/  虚构数据包（M0 数据契约样例，无真实数据）
 docs/               需求 / 产品 / 技术 / 开发计划 / M0 决策
 ```
@@ -50,20 +50,26 @@ CGO_ENABLED=0 go build -o bin/wedding ./cmd/wedding
 ```sh
 # 构建镜像（注入版本信息）
 ops/build-image.sh wedding-app:0.1.0
-
-# 本地容器冒烟（映射 3000 端口，仅本地用）
-ops/smoke-local.sh
 ```
 
-共享机器部署使用 `deploy/compose.yaml`（external network `costra_default`、只 expose 不发布端口、256M/0.5CPU、json-file 日志）：
+共享机器部署使用 `deploy/compose.yaml`（external network `costra_default`、只 expose 不发布端口、256M/0.5CPU、json-file 日志），由 `ops/deploy-app.sh` 驱动。
+
+## M2 真实 URL 链路（staging 执行）
+
+在 staging 机器 `/opt/wedding/` 仓库根按顺序执行（详见 `docs/05-m2-runbook.md`）：
 
 ```sh
-docker compose -p wedding -f deploy/compose.yaml up -d --build
+ops/staging-selfcheck.sh   # WG-201 只读自检（staging-machine-brief §8）
+ops/deploy-app.sh          # WG-202 创建 /data/wedding 目录并启动 wedding-app
+# WG-203：人工按 runbook §4 插入 /wedding/ location（片段：deploy/nginx-wedding.conf）并热加载
+ops/verify-public.sh       # 真实 URL + Costra 回归验证（任意可访问公网机器可执行）
 ```
+
+注意：nginx 修改的对象是 Costra 项目的 live 配置，一律**人工按 runbook 操作**，不使用脚本；回滚同样人工按 runbook §6 执行。
 
 ## 安全与边界
 
 - 明文卡片密钥不入库（HMAC 摘要），礼品码 AEAD 加密（后续里程碑实现）。
 - 日志不记录姓名、密钥、礼品码、Cookie、请求正文。
 - 真实数据、`app.key`、明文密钥/礼品码绝不进入 Git（见 `.gitignore`）。
-- 共享机器红线以 `staging-machine-brief.md` 为准：不触碰 Costra 任何数据、配置与端口。
+- 共享机器红线以 `docs/staging-machine-brief.md` 为准：不触碰 Costra 任何数据、配置与端口。
