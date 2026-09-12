@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v1.4
-日期: 2026-09-11
+版本: v1.5
+日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
 产品设计: docs/01-product-architecture.md
@@ -308,7 +308,7 @@ PRAGMA busy_timeout = 5000;
 同时：
 
 - 仅运行一个应用实例；连接池保持小规模，例如最多 4 个连接。
-- 数据目录权限 `0700`，数据库、秘密和备份文件权限 `0600`。
+- 数据目录权限 `0700`，数据库、秘密和备份文件权限 `0600`；`data`/`backups`/`secrets` 目录及其中文件属主为容器运行用户 65534。
 - 所有 SQL 参数化；绑定写事务保持短小，不在事务内做网络或文件操作。
 - migration 在发布时由同版本二进制显式执行；失败即停止发布。
 - 不设置复杂 page cap、审计容量、自动 vacuum 策略或多版本恢复守卫；本项目数据量可直接人工观察。
@@ -443,7 +443,7 @@ Path: /wedding/  （由 nginx `proxy_cookie_path / /wedding/` 统一收编；应
 
 ### 10.1 单一应用秘密
 
-宿主机保存一个权限为 `0600` 的随机 `app.key`，只读挂载给应用。程序使用 HKDF 派生：
+宿主机保存一个随机 `app.key`（属主容器用户 65534、权限 `0600`，所在 `/data/wedding/secrets` 目录属主 65534、权限 `0700`——容器以非 root 运行，root 属主的 `0700` 目录会阻止其读取），只读挂载给应用。程序使用 HKDF 派生：
 
 - `K_access_lookup`：8 位卡片密钥 HMAC；
 - `K_gift_code`：礼品激活码 AEAD 加密。
@@ -528,12 +528,14 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 | 路径 | 用途 | 规则 |
 |---|---|---|
 | `/opt/wedding/` | compose、镜像版本信息、部署与备份脚本、`/etc/cron.d/wedding` 片段与 nginx 插入片段的仓库副本 | 只属于 WeddingGift |
-| `/data/wedding/data/` | SQLite 数据库 | `0700` 目录，数据库 `0600` |
-| `/data/wedding/backups/` | 本机 cron 备份 | 默认保留最近 72 份（≈3 天），不写入 Costra 目录 |
-| `/data/wedding/secrets/` | `app.key` | `0700` 目录、`0600` 文件、只读挂载 |
+| `/data/wedding/data/` | SQLite 数据库 | `0700` 目录、数据库 `0600`，属主容器用户 65534 |
+| `/data/wedding/backups/` | 本机 cron 备份 | 属主容器用户 65534；默认保留最近 72 份（≈3 天），不写入 Costra 目录 |
+| `/data/wedding/secrets/` | `app.key` | `0700` 目录、`0600` 文件，属主容器用户 65534、只读挂载 |
 | `/data/wedding/import/` | 临时导入文件 | 导入后删除或移回离线位置 |
 | `/data/wedding/nginx/` | 修改前备份和 WeddingGift 片段 | 不覆盖 Costra 全量配置 |
 | `/etc/cron.d/wedding` | WeddingGift 本机备份 cron 单元 | 独立文件；不修改 Costra 的 `costra-standby`/`costra-analyze`；拆除时删除 |
+
+属主约定：`data`、`backups`、`secrets` 及其内容属主为容器运行用户 65534——bind mount 保留宿主机属主，容器内非 root 进程必须穿越目录并读写/读取这些文件，root 属主的 `0700` 目录会直接导致访问失败；`import`、`nginx` 及 `/data/wedding` 顶层保持 root（由 root 人工操作，不受 DAC 限制）。
 
 绝不挂载 `/data/pgsql*`、`/data/redis`、`/data/slave`、`/data/conf/*.env` 或 Docker socket。
 
@@ -723,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.5 | 2026-09-12 | 修正 secrets 目录属主缺陷：`/data/wedding/secrets` 及 `app.key` 属主为容器用户 65534（root:root `0700` 目录会阻止非 root 容器进程读取，M3 起必现）；§10.1/§13.1 补属主约定，同步 `ops/deploy-app.sh` 与 M2 手册 |
 | v1.4 | 2026-09-11 | 备份改为每小时 `:44` 触发、保留 72 份，明确宿主机 cron 以独立 `/etc/cron.d/wedding` 落地并写入避峰推导；补 `wedding healthz-check` 子命令供 distroless 健康检查；写清 nginx 2m 与应用 8KB 请求体为纵深防御；Cookie Path 统一 `/wedding/`；强调 `app.key` 离线保管重要性；恢复后可清空 SESSION；目录收束到 `/opt/wedding` 与 `/data/wedding` 并同步拆除清单 |
 | v1.3 | 2026-09-11 | 数据模型改为成员多登录名称、密钥与同行组一对一及同行组多礼品；密钥固定人工生成的 8 位数字；新增真实 URL 最小主页阶段；删除 COS、主从、恢复纪元、复杂交付、重审计和高并发容量设计 |
 | v1.2 | 2026-09-11 | 完成原始技术架构基线 |

@@ -45,11 +45,13 @@ esac
 
 echo "--- 创建 WeddingGift 自有目录（/data/wedding，0700） ---"
 # 目录收束：运行时数据全部在 /data/wedding 下；secrets 后续放 app.key（只读挂载）。
-# data/backups 属主改为容器内运行用户（65534），应用 M3 起需写 SQLite 与备份；
-# secrets/import/nginx 保持 root 所有（nginx 改前备份与导入文件由 root 操作）。
+# data/backups/secrets 属主改为容器内运行用户（65534）：应用 M3 起需写 SQLite 与备份，
+# 并以非 root 身份读取 secrets/app.key（bind mount 保留宿主机属主，root:root 0700
+# 目录会阻止容器内进程穿越读取）；import/nginx 及 /data/wedding 顶层保持 root
+# （nginx 改前备份与导入文件由 root 操作）。
 mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
 chmod 700 /data/wedding /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
-chown 65534:65534 /data/wedding/data /data/wedding/backups
+chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ls -la /data/wedding
 
 echo "--- 构建并启动 ${CONTAINER}（compose project: ${PROJECT}） ---"
