@@ -11,6 +11,9 @@
 </head>
 <body>
     <main class="app" role="main">
+        <!-- 登录态主标题：仅登录时显示，作为页面顶部首行（位于 site-header 之上） -->
+        <h1 class="home-intro" id="home-intro" hidden>感谢你来见证我们的幸福时刻</h1>
+
         <header class="site-header" id="site-header">
             <p class="couple" id="couple-names">赵伟 &amp; 刘子璇</p>
             <p class="date" id="wedding-date">2026-09-26</p>
@@ -23,7 +26,6 @@
 
         <!-- 登录态 -->
         <section id="view-login" class="view" hidden>
-            <h1 class="home-intro" id="home-intro">感谢你来见证我们的幸福时刻</h1>
             <form id="login-form" class="card" novalidate>
                 <div class="field">
                     <label for="login-name">你的名字</label>

@@ -62,25 +62,25 @@ body {
     flex-direction: column;
 }
 
-/* ---------- 抬头 ---------- */
+/* ---------- 标题与文案 ---------- */
 
-.site-header {
-    text-align: center;
-    padding: var(--space-4) 0 var(--space-5);
-}
-
-.couple {
-    margin: 0;
-    font-size: 20px;
+.home-intro,
+.salutation {
+    margin: 0 0 var(--space-4);
+    font-size: 28px;
     font-weight: 600;
-    letter-spacing: 0.04em;
+    line-height: 1.35;
 }
 
-.date {
-    margin: var(--space-1) 0 0;
-    font-size: 14px;
-    color: var(--ink-soft);
-    letter-spacing: 0.12em;
+/* 登录欢迎语：作为登录页顶部主标题，位于 site-header 之上 */
+.home-intro {
+    margin-top: var(--space-5);
+    text-align: center;
+}
+
+/* 称呼是感谢信起首，居中作为礼品页主标题 */
+.salutation {
+    text-align: center;
 }
 
 /* ---------- 视图切换 ---------- */
@@ -104,23 +104,26 @@ body {
     padding: var(--space-7) 0;
 }
 
-/* ---------- 标题与文案 ---------- */
+/* ---------- 抬头 ---------- */
 
-.home-intro,
-.salutation {
-    margin: 0 0 var(--space-4);
-    font-size: 28px;
-    font-weight: 600;
-    line-height: 1.35;
-}
-
-.home-intro {
+.site-header {
     text-align: center;
+    /* 顶部空间由 home-intro 的 margin-top 提供，此处不再额外加 padding-top */
+    padding: 0 0 var(--space-5);
 }
 
-/* 称呼是感谢信起首，靠左置于页面偏上位置 */
-.salutation {
-    text-align: left;
+.couple {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.date {
+    margin: var(--space-1) 0 0;
+    font-size: 14px;
+    color: var(--ink-soft);
+    letter-spacing: 0.12em;
 }
 
 .thanks {

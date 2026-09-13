@@ -37,7 +37,7 @@ func LoadConfig() Config {
 			HomeIntro:       envOr("WEDDING_HOME_INTRO", "感谢你来见证我们的幸福时刻"),
 			LoginHint:       envOr("WEDDING_LOGIN_HINT", "请输入你的名字，以及卡片上的 8 位数字"),
 			ThanksMessage:   envOr("WEDDING_THANKS_MESSAGE", "谢谢你的祝福，这是我们为你准备的小小心意"),
-			PrivacyNote:     envOr("WEDDING_PRIVACY_NOTE", "本页仅用于展示回礼，我们只收集识别所需的信息，活动结束后删除。"),
+			PrivacyNote:     envOr("WEDDING_PRIVACY_NOTE", "本页限时开放（即日起至2026-12-31）。本页只收集识别所需的信息，活动结束后删除。"),
 			ContactHint:     envOr("WEDDING_CONTACT_HINT", "如有疑问，请咨询赵伟/刘子璇。"),
 			IcpFilingText:   envOr("WEDDING_ICP_FILING_TEXT", "沪ICP备2026017253号-2"),
 			IcpFilingURL:    envOr("WEDDING_ICP_FILING_URL", "https://beian.miit.gov.cn/"),

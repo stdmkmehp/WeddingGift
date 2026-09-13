@@ -155,7 +155,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.logger.Info("login_failed",
 			slog.String("request_id", requestIDFromContext(r.Context())),
 			slog.String("error_class", "key_bound_elsewhere"))
-		writeError(w, http.StatusUnauthorized, "key_already_bound", "这张卡片密钥已被绑定，如果卡片就在你手上，请联系新郎（赵伟）处理")
+		writeError(w, http.StatusUnauthorized, "key_already_bound", "这张卡片密钥已被绑定，请联系新郎（赵伟）处理")
 		return
 	case err != nil:
 		s.logger.Error("login_error",
