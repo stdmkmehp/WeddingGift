@@ -5,7 +5,8 @@
 - 版本兼容偏好（2026-09-13 定）：除非用户明确要求，否则不需要考虑版本兼容性问题——schema/接口等变更直接改源头（如直接修订 0001_init.sql）并重置数据库，不写独立迁移文件、不做升级路径兼容。
 - 礼品：首批类型为旅游年卡、电影券、咖啡券；同行组可拥有多份礼品，类型可扩展，礼品实例可覆盖类型默认兑换信息。
 - 架构原则：小范围、低并发、低数据量，优先核心功能并避免过度设计。采用 Go 单体、单实例 SQLite 和本机 cron 备份；不做 COS、主从、高可用、复杂恢复、重审计或高并发体系。
-- 依赖管理（2026-09-12 定）：Go 依赖以 `vendor/` 目录随仓库提交（开发机 `go mod vendor` 生成，约 137MB，主要为 modernc.org/libc）；Docker 构建用 `-mod=vendor` 零网络——staging 构建机无法直达 proxy.golang.org，Dockerfile 禁止 `go mod download`。升级依赖流程：开发机 `go mod tidy && go mod vendor` 后随代码一起提交。
+- 依赖与镜像发布（2026-09-13 修订）：仓库不维护 `vendor/`，Dockerfile 构建阶段为 `go mod download`（需网络）。正式机构建机无法直达 Go 模块源/镜像源，因此**镜像一律开发机 `ops/build-image.sh` 构建打包（`docker save` + gzip 到 `dist/wedding-app-<version>-<commit>-<TS>.tar.gz`，`dist/` 已 gitignore）→ scp 到正式机 → `ops/load-image.sh` 解压 load**；正式机禁止 compose build（必失败）。升级依赖流程：开发机 `go mod tidy` 后随代码提交。
+- ops 脚本职责划分（2026-09-13）：`stop-app.sh`/`start-app.sh` 独立负责停/起服（幂等）；`reset-db.sh`/`restore-db.sh` **仅操作数据库**——不停起服，容器运行中直接报错拒绝执行，restore 失败回滚只恢复文件状态不自动起服，起服由操作者显式执行。
 - 备份约定：SQLite online backup API（非裸 dump）；宿主机独立 `/etc/cron.d/wedding`（不动 Costra 两个 cron 文件），每小时 `:44` 触发、保留最近 72 份（≈3 天）；:44 用于避开整点 pg_dump、:47 主从检查、06:27 刷新、23:5x 分析窗口。健康检查用应用自带 `wedding healthz-check` 子命令（兼容 distroless/scratch）。
 - 目录收束约定（2026-09-12 更正）：WeddingGift 全部产出集中到两处根目录——`/root/WeddingGift/`（staging 实际 git clone 位置：代码/compose/脚本/cron 与 nginx 片段仓库副本）与 `/data/wedding/`（data/backups/secrets/import/nginx 子目录）；应用日志走 Docker json-file，不散落其他位置。`app.key` 离线异位保管，重要性等同或高于数据库备份。
 - 目录权限模型（2026-09-12 上机实测后修正）：容器内进程恒为 UID 65534 且 cap_drop ALL，bind mount 保留宿主机属主/权限位。`/data/wedding` 顶层与 `import` 必须 root:root `0755`（65534 需穿越顶层并读取 import 内 0644 CSV，`0700` 会全链路 EACCES）；`data`/`backups`/`secrets` 为 `65534:65534` `0700`；`nginx` 为 root:root `0700` 且不进容器。已固化在 `ops/deploy-app.sh` 与 06-m6-runbook §2.3、02 架构 §13.1（v2.2）。

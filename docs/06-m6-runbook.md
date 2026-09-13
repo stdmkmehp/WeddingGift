@@ -91,17 +91,23 @@ ls -l /data/wedding/secrets/app.key   # 确认 -rw------- 1 65534 65534
 
 **立即把 app.key 复制到项目所有者的离线位置异位保管**（与真实数据源文件同级）。app.key 丢失则数据库内密钥摘要与礼品密文全部失效，备份也救不回。
 
-### 2.5 构建镜像
+### 2.5 构建并传输镜像（开发机 → 正式机）
+
+正式机无法直达 Go 模块源与镜像源，**镜像一律在开发机构建**（Dockerfile 构建阶段需拉取 `golang:1.27-alpine` 并 `go mod download`），打包传输到正式机后 load：
 
 ```sh
-cd /root/WeddingGift
-export WEDDING_VERSION="$(git describe --tags --always --dirty)" \
-       WEDDING_COMMIT="$(git rev-parse --short HEAD)" \
-       WEDDING_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-docker compose -p wedding -f deploy/compose.yaml build
+# 1. 开发机仓库根执行：构建镜像并打包压缩
+#    产出 dist/wedding-app-<version>-<commit>-<UTC时间戳>.tar.gz（dist/ 已 gitignore）
+ops/build-image.sh
+
+# 2. 传输到正式机器（开发机执行）
+scp dist/wedding-app-<version>-<commit>-<时间戳>.tar.gz root@106.54.173.55:/root/WeddingGift/dist/
+
+# 3. 正式机器加载镜像
+cd /root/WeddingGift && ops/load-image.sh
 ```
 
-记录 `version/commit/build_time`（写入 §8 执行记录）。本节后续所有 compose 命令沿用此 shell 的环境变量。
+记录 `version/commit/build_time`（build-image.sh 输出，写入 §8 执行记录）。
 
 ### 2.6 数据库 schema 迁移
 
@@ -139,10 +145,8 @@ docker compose -p wedding -f deploy/compose.yaml run --rm app backup create \
 ### 2.8 启动服务
 
 ```sh
-docker compose -p wedding -f deploy/compose.yaml up -d
-# 等待健康（约 10 秒内；healthy 前 serve 不会对外响应）
-docker inspect -f '{{.State.Health.Status}}' wedding-app   # 应为 healthy
-docker stats --no-stream                                   # wedding-app 远低于 256M/0.5 CPU，Costra 容器无异常
+ops/start-app.sh                      # 起服并等待健康（healthy 前 serve 不会对外响应）
+docker stats --no-stream              # wedding-app 远低于 256M/0.5 CPU，Costra 容器无异常
 ```
 
 ### 2.9 nginx 接入（人工操作，禁用脚本）
@@ -287,13 +291,9 @@ ops/canary-smoke.sh
 代码、配置、数据结构有变更时的标准发布序列：
 
 ```sh
+# 1. 开发机构建新镜像并传输（见 §2.5 第 1–2 步）；正式机：
 cd /root/WeddingGift && git pull && git checkout <发布 commit>
-
-# 1. 注入版本并构建新镜像
-export WEDDING_VERSION="$(git describe --tags --always --dirty)" \
-       WEDDING_COMMIT="$(git rev-parse --short HEAD)" \
-       WEDDING_BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-docker compose -p wedding -f deploy/compose.yaml build
+ops/load-image.sh
 
 # 2. 发布前回滚点：数据库备份 + nginx 配置备份
 TS="$(date -u +%Y%m%d-%H%M%S)"
@@ -302,10 +302,10 @@ docker compose -p wedding -f deploy/compose.yaml run --rm app backup create \
 cp -p /data/conf/nginx/costra.cloud.conf "/data/wedding/nginx/costra.cloud.conf.${TS}.pre-release"
 
 # 3. 停旧容器 → schema 迁移（无新 migration 时为 no-op）→ 启动新容器
-docker compose -p wedding -f deploy/compose.yaml stop app
+#    （load 新镜像后 up -d 自动重建容器使用最新镜像；start-app.sh 内含等待健康）
+ops/stop-app.sh
 docker compose -p wedding -f deploy/compose.yaml run --rm app migrate
-docker compose -p wedding -f deploy/compose.yaml up -d
-docker inspect -f '{{.State.Health.Status}}' wedding-app   # 应为 healthy
+ops/start-app.sh
 
 # 4. nginx 热加载（容器重建后重新解析容器地址；不修改配置则无需备份/编辑）
 docker exec costra-nginx nginx -t && docker exec costra-nginx nginx -s reload
@@ -329,23 +329,27 @@ ops/canary-smoke.sh
 线上数据出问题时的标准恢复手段：
 
 ```sh
+ops/stop-app.sh                              # 先停服（脚本仅操作数据库，运行中直接拒绝执行）
 ops/restore-db.sh                            # 还原 backups 下最新备份（交互确认）
 ops/restore-db.sh wedding-<UTC时间戳>.db     # 指定 backups 目录下文件名
 ops/restore-db.sh <备份文件> --yes           # 非交互确认
+ops/start-app.sh                             # 完成后起服
 ```
 
-脚本流程：备份体检（存在/非空/SQLite 魔数）→ 还原前兜底备份当前库（`wedding-pre-restore-<TS>.db`；当前库已损坏则移入 `data/quarantine-<TS>/` 保留，不销毁）→ 停服替换 `wedding.db` → migrate（旧 schema 备份自动前滚）→ 启动等健康 → 输出 status 脱敏计数供核对。**任一环节失败自动回滚到还原前状态**。注意：备份只能与生成时的同一把 app.key 配合；还原后旧会话在 30 天 TTL 内仍有效，需强制重新登录时按架构 §17.3 人工清空 SESSION 表。
+脚本流程：备份体检（存在/非空/SQLite 魔数）→ 兜底备份当前库（`wedding-pre-restore-<TS>.db`；当前库已损坏则移入 `data/quarantine-<TS>/` 保留，不销毁）→ 替换 `wedding.db` → migrate（旧 schema 备份自动前滚）→ 输出 status 脱敏计数供核对。**任一环节失败自动回滚到还原前状态**（服务保持停止，起服由操作者确认后显式执行）。注意：备份只能与生成时的同一把 app.key 配合；还原后旧会话在 30 天 TTL 内仍有效，需强制重新登录时按架构 §17.3 人工清空 SESSION 表。
 
 ### 6.3 清库重导（测试循环，ops/reset-db.sh）
 
 开发测试阶段在正式环境反复测试后的重置手段（`data import` 要求空库，清库是重新导入的前置）：
 
 ```sh
+ops/stop-app.sh          # 先停服（脚本仅操作数据库，运行中直接拒绝执行）
 ops/reset-db.sh          # 交互确认
 ops/reset-db.sh --yes    # 非交互
+ops/start-app.sh         # 完成后起服
 ```
 
-脚本流程：打印当前 status 留档 → 清库前自动备份（`wedding-pre-reset-<TS>.db`）→ 停服删库（含 -wal/-shm）→ migrate 重建 schema → 启动等健康。完成后按 §2.7 第 3–5 步重新 validate / import / status。app.key 保持不变，同一数据包可重复导入。
+脚本流程：打印当前 status 留档 → 清库前自动备份（`wedding-pre-reset-<TS>.db`）→ 删库（含 -wal/-shm）→ migrate 重建 schema。完成后按 §2.7 第 3–5 步重新 validate / import / status。app.key 保持不变，同一数据包可重复导入。
 
 ## 7. 回滚预案
 
@@ -353,7 +357,7 @@ ops/reset-db.sh --yes    # 非交互
 |---|---|
 | 数据预检/导入失败 | 未启动新服务，数据库保持导入前状态（单事务零写入）；修正离线数据后从 §2.7 第 3 步重来 |
 | 导入后数量核对不符 | 不启动服务；离线核对事实源，必要时 `rm /data/wedding/data/wedding.db*` 后从 §2.6 重来（密钥摘要与礼品密文随库重建，app.key 不变即可） |
-| 启动后应用异常 | `docker compose -p wedding -f deploy/compose.yaml stop app`；用 `ops/restore-db.sh <备份文件>` 恢复（自动停服/替换/migrate/健康检查，失败自动回滚；可选恢复后清空 SESSION）；镜像问题则 `git checkout <上一 commit>` 重新 build 后 `up -d` |
+| 启动后应用异常 | `ops/stop-app.sh`；用 `ops/restore-db.sh <备份文件>` 恢复（仅操作 DB，先停服、失败自动回滚、完成后 `ops/start-app.sh`；可选恢复后清空 SESSION）；镜像问题则在开发机 `git checkout <上一 commit>` 重新 `ops/build-image.sh`，传输后 load 并 `ops/start-app.sh` |
 | 需整体下线业务 | 按 M2 runbook §6 人工删除 nginx wedding 块并热加载，再 `docker compose -p wedding -f deploy/compose.yaml down`（真实数据库文件保留不动，操作前再次备份） |
 | nginx 异常（`/wedding/` 全 404） | 第一嫌疑是 live conf 被 Costra 模板刷新覆盖：`grep -c wedding /data/conf/nginx/costra.cloud.conf` 为 0 即确认，按 §2.9 重新插入片段并热加载 |
 
@@ -392,6 +396,7 @@ ops/reset-db.sh --yes    # 非交互
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.3 | 2026-09-13 | 发布流程改为「开发机构建镜像压缩包 + 正式机 load」（正式机无法直达 Go 模块源/镜像源）：新增 `ops/build-image.sh`（开发机构建 + `docker save` 打包到 `dist/`）与 `ops/load-image.sh`（正式机体检/解压/load）；新增 `ops/stop-app.sh`、`ops/start-app.sh` 独立停起服脚本；`ops/reset-db.sh` 与 `ops/restore-db.sh` 改为**仅操作数据库**（不停起服，容器运行中直接拒绝执行，回滚也不自动起服）；§2.5/§2.8/§5/§6.2/§6.3/§7 同步 |
 | v2.2 | 2026-09-12 | 修正 §2.3 目录权限缺陷：`/data/wedding` 顶层与 `import` 由 `0700` 改 `0755`（root 属主不变）——容器 65534 需穿越顶层并读取 import 内 CSV，原写法导致 validate/import/serve 全链路 permission denied（上机实测）；`nginx` 明确 root:root `0700` 不进容器；§2.7 上传文件明确 `0644`；与 `ops/deploy-app.sh` 同步 |
 | v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置，清库前自动备份）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§6 扩展为「备份与数据维护」，§7 应用异常回滚改走脚本 |
 | v2.0 | 2026-09-12 | 重写为自包含操作手册：从 0 部署全序列（拉码/自检/目录/app.key/构建/迁移/导入/启动/nginx/cron）、配置说明、验证、日常发布更新、回滚；不再以"M2 已就位"为前提，去除测试环境表述 |
