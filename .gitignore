@@ -23,6 +23,9 @@ app.key
 # M2 staging 自检记录（含机器现状信息，留档于 staging 本地，不进 Git）
 /ops/records/
 
+# Playwright CLI 临时产物（页面快照 / 控制台日志，仅本地排查用）
+/.playwright-cli/
+
 # IDE / OS
 .DS_Store
 .idea/

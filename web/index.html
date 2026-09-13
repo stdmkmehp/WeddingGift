@@ -10,6 +10,79 @@
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
+    <!-- 婚礼背景层：帷幕 / 四角线稿 / 花瓣，全部仅装饰，对辅助技术隐藏 -->
+    <div class="bg-veil" aria-hidden="true">
+        <svg viewBox="0 0 1440 300" preserveAspectRatio="none" focusable="false">
+            <defs>
+                <linearGradient id="veil-strong" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.15"/>
+                    <stop offset="1" stop-color="#8B5E66" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="veil-soft" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.08"/>
+                    <stop offset="1" stop-color="#8B5E66" stop-opacity="0"/>
+                </linearGradient>
+            </defs>
+            <path fill="url(#veil-strong)"
+                  d="M0 0 H1440 V150 C1200 232 960 112 720 172 C480 232 240 138 0 214 Z"/>
+            <path fill="url(#veil-soft)"
+                  d="M0 0 H1440 V92 C1140 168 840 66 600 132 C420 178 180 118 0 176 Z"/>
+        </svg>
+    </div>
+    <!-- 四角线稿：左上花枝 / 右上碰杯 / 左下爱心 / 右下花枝 -->
+    <div class="corner-deco corner-tl" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M13 44 C17 32 23 22 35 9"/>
+            <circle cx="36" cy="8.5" r="3.4"/>
+            <circle cx="26.5" cy="20.5" r="2.5"/>
+            <path d="M21 30 q-7.5 -1 -9.5 -8.5 q7.5 0.5 9.5 8.5 Z"/>
+        </svg>
+    </div>
+    <div class="corner-deco corner-tr" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <g transform="rotate(-12 17 20)">
+                <path d="M11 9 h12 v7.5 a6 6 0 0 1 -12 0 Z"/>
+                <path d="M17 22.5 v9.5"/>
+                <path d="M12.5 32 h9"/>
+            </g>
+            <g transform="rotate(12 31 20)">
+                <path d="M25 9 h12 v7.5 a6 6 0 0 1 -12 0 Z"/>
+                <path d="M31 22.5 v9.5"/>
+                <path d="M26.5 32 h9"/>
+            </g>
+        </svg>
+    </div>
+    <div class="corner-deco corner-bl" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M21 37 C18.5 34.8 8 26.6 8 19.4 C8 14.9 11.6 11.3 16 11.3
+                     C18.2 11.3 19.9 12.4 21 14 C22.1 12.4 23.8 11.3 26 11.3
+                     C30.4 11.3 34 14.9 34 19.4 C34 26.6 23.5 34.8 21 37 Z"/>
+            <path d="M38.5 15 C37.6 14.2 34.5 11.5 34.5 8.9 C34.5 7.2 35.8 5.9 37.4 5.9
+                     C38.2 5.9 38.8 6.3 39.1 6.9 C39.4 6.3 40 5.9 40.8 5.9
+                     C42.4 5.9 43.7 7.2 43.7 8.9 C43.7 11.5 40.6 14.2 39.8 15 Z" transform="translate(-1.3 0)"/>
+        </svg>
+    </div>
+    <div class="corner-deco corner-br" aria-hidden="true">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path d="M35 44 C31 32 25 22 13 9"/>
+            <circle cx="12" cy="8.5" r="3.4"/>
+            <circle cx="21.5" cy="20.5" r="2.5"/>
+            <path d="M27 30 q7.5 -1 9.5 -8.5 q-7.5 0.5 -9.5 8.5 Z"/>
+        </svg>
+    </div>
+    <!-- 慢速坠落花瓣：仅登录页显示，prefers-reduced-motion 时静止不可见 -->
+    <div class="petals" aria-hidden="true">
+        <i class="petal"></i>
+        <i class="petal"></i>
+        <i class="petal"></i>
+        <i class="petal"></i>
+        <i class="petal"></i>
+    </div>
+
     <main class="app" role="main">
         <!-- 登录态主标题：仅登录时显示，作为页面顶部首行（位于 site-header 之上） -->
         <h1 class="home-intro" id="home-intro" hidden>感谢你来见证我们的幸福时刻</h1>
