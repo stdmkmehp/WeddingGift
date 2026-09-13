@@ -282,7 +282,7 @@ func TestBootstrapAfterKeyRevoke(t *testing.T) {
 
 // TestGuestJourney 完整来宾旅程 E2E（WG-601）：把 PA-02/04/05/06/07/10 串成
 // 一条不依赖其他测试执行顺序的独立链路——初始化、多登录名称、首绑、同组
-// 再登录、跨组拒绝、第二密钥拒绝、多礼品逐份揭示、退出与旧会话失效。
+// 再登录、跨组已绑定拒绝、同组第二密钥、多礼品逐份揭示、退出与旧会话失效。
 func TestGuestJourney(t *testing.T) {
 	h, _ := newSecServer(t, slog.Default(), nil)
 
@@ -335,17 +335,51 @@ func TestGuestJourney(t *testing.T) {
 		t.Fatalf("同组成员登录失败: %s", loginB.Body.String())
 	}
 
-	// 5. 跨组拒绝（PA-06）：K002 已绑 G002，搭配 G001 的登录名称统一失败。
-	if rec := doLogin(h, `{"loginName":"王芳","keyCode":"20260002"}`); rec.Code != http.StatusUnauthorized {
-		t.Errorf("跨组登录应 401，实际 %d", rec.Code)
+	// 5. 跨组已绑定拒绝（PA-06）：K002 已绑 G002，搭配 G001 的登录名称
+	//    返回明确的 401 + key_already_bound（密钥已被绑定，引导联系新郎）。
+	rec5 := doLogin(h, `{"loginName":"王芳","keyCode":"20260002"}`)
+	if rec5.Code != http.StatusUnauthorized {
+		t.Errorf("跨组已绑定密钥登录应 401，实际 %d", rec5.Code)
+	}
+	var errBody struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec5.Body.Bytes(), &errBody); err != nil {
+		t.Fatal(err)
+	}
+	if errBody.Error.Code != "key_already_bound" {
+		t.Errorf("跨组已绑定密钥错误码 = %q, want key_already_bound", errBody.Error.Code)
 	}
 
-	// 6. 第二密钥拒绝（PA-07）：K001 绑定 G001 后，未绑定的 K003 搭配 G001 名称失败。
-	if rec := doLogin(h, `{"loginName":"王芳","keyCode":"20260001"}`); rec.Code != http.StatusOK {
-		t.Fatalf("G001 首绑失败: %s", rec.Body.String())
+	// 6. 同组第二密钥（PA-07，2026-09-13 调整）：K001 绑定 G001 后，
+	//    未绑定的 K003 搭配 G001 名称绑定成功，且看到与 K001 相同的回礼。
+	loginG1 := doLogin(h, `{"loginName":"王芳","keyCode":"20260001"}`)
+	if loginG1.Code != http.StatusOK {
+		t.Fatalf("G001 首绑失败: %s", loginG1.Body.String())
 	}
-	if rec := doLogin(h, `{"loginName":"王芳","keyCode":"20260003"}`); rec.Code != http.StatusUnauthorized {
-		t.Errorf("组已有密钥时第二密钥应 401，实际 %d", rec.Code)
+	loginG1K3 := doLogin(h, `{"loginName":"王芳","keyCode":"20260003"}`)
+	if loginG1K3.Code != http.StatusOK {
+		t.Fatalf("同组第二密钥绑定应 200，实际 %d: %s", loginG1K3.Code, loginG1K3.Body.String())
+	}
+	var sv1, sv3 struct {
+		Session struct {
+			Salutation string `json:"salutation"`
+			Gifts      []struct {
+				ID string `json:"id"`
+			} `json:"gifts"`
+		} `json:"session"`
+	}
+	if err := json.Unmarshal(loginG1.Body.Bytes(), &sv1); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(loginG1K3.Body.Bytes(), &sv3); err != nil {
+		t.Fatal(err)
+	}
+	if sv1.Session.Salutation != sv3.Session.Salutation || len(sv1.Session.Gifts) != len(sv3.Session.Gifts) ||
+		(len(sv1.Session.Gifts) > 0 && sv1.Session.Gifts[0].ID != sv3.Session.Gifts[0].ID) {
+		t.Errorf("同组两个密钥看到的回礼应完全相同: %+v vs %+v", sv1.Session, sv3.Session)
 	}
 
 	// 7. 多礼品逐份揭示（PA-10）：三份均可独立 reveal，实例覆盖的咖啡券内容正确。

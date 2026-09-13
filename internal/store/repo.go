@@ -188,8 +188,8 @@ type GroupStat struct {
 	Status      string
 	MemberCount int
 	GiftCount   int
-	KeyRef      string // 已绑定密钥的 external_ref；未绑定为空
-	KeyStatus   string
+	// BoundKeys 是该组已绑定密钥的数量（一个同行组可绑定多个密钥）。
+	BoundKeys int
 }
 
 // Stats 是 status 命令的脱敏统计结果：只含内部编号与数量，不含明文密钥/礼品码。
@@ -250,8 +250,7 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 		SELECT g.external_ref, g.status,
 		       (SELECT COUNT(*) FROM member m WHERE m.group_id = g.id),
 		       (SELECT COUNT(*) FROM gift_item gi WHERE gi.group_id = g.id AND gi.status = 'active'),
-		       IFNULL((SELECT k.external_ref FROM access_key k WHERE k.group_id = g.id), ''),
-		       IFNULL((SELECT k.status FROM access_key k WHERE k.group_id = g.id), '')
+		       (SELECT COUNT(*) FROM access_key k WHERE k.group_id = g.id)
 		FROM recipient_group g
 		ORDER BY g.external_ref`)
 	if err != nil {
@@ -260,7 +259,7 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var gs GroupStat
-		if err := rows.Scan(&gs.ExternalRef, &gs.Status, &gs.MemberCount, &gs.GiftCount, &gs.KeyRef, &gs.KeyStatus); err != nil {
+		if err := rows.Scan(&gs.ExternalRef, &gs.Status, &gs.MemberCount, &gs.GiftCount, &gs.BoundKeys); err != nil {
 			return nil, err
 		}
 		s.GroupStats = append(s.GroupStats, gs)

@@ -2,7 +2,8 @@
 -- 对齐 docs/02-technical-architecture.md §6 ER 模型与关键约束：
 --   - member.display_name_norm 全局唯一（本名唯一，不设计同名处理）；
 --   - member_login_name.normalized_value 全局唯一（本名与所有昵称指向唯一成员）；
---   - access_key.group_id 可空且唯一（密钥与同行组两侧都是 0 或 1 的关系）；
+--   - access_key.group_id 可空、不设唯一约束（一个密钥最多绑定一个同行组，
+--     由绑定事务的条件更新保证；一个同行组可绑定多个密钥）；
 --   - 明文密钥/礼品码不入库（key_digest 为 HMAC 摘要，code_ciphertext 为 AEAD 密文）；
 --   - 时间统一以 UTC RFC3339 文本存储。
 
@@ -36,7 +37,7 @@ CREATE TABLE access_key (
     id           TEXT PRIMARY KEY,
     external_ref TEXT NOT NULL UNIQUE,
     key_digest   BLOB NOT NULL UNIQUE,
-    group_id     TEXT UNIQUE REFERENCES recipient_group (id),
+    group_id     TEXT REFERENCES recipient_group (id),
     status       TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
     bound_at     TEXT,
     created_at   TEXT NOT NULL

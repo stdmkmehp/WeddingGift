@@ -69,7 +69,8 @@ echo "=== 7/7 秘密扫描 ==="
 TRACKED="$(git ls-files | grep -iE '(^|/)(app\.key|secrets/)|\.(key|db|db-wal|db-shm|pem|p12|pfx)$' || true)"
 [ -z "${TRACKED}" ] || { echo "${TRACKED}"; fail "Git 中存在敏感文件"; }
 # 私钥材料扫描（模式拼接书写，避免命中本脚本自身）。
-if grep -rnI --exclude-dir=.git 'PRIVATE'' KEY' . ; then
+# .git 与 .codebuddy（AI 工具状态目录，可能合法引用该字样）不属于项目交付物，不扫描。
+if grep -rnI --exclude-dir=.git --exclude-dir=.codebuddy 'PRIVATE'' KEY' . ; then
   fail "仓库中疑似存在私钥材料"
 fi
 # 虚构数据标记：testdata 礼品码必须 FAKE 前缀，卡片密钥必须 2026 虚构号段，

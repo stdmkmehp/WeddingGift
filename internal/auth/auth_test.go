@@ -80,7 +80,8 @@ func TestLoginInputValidation(t *testing.T) {
 	}
 }
 
-// TestLoginUnifiedError 身份/绑定类失败全部归一到 ErrInvalidCredentials。
+// TestLoginUnifiedError 名称无效或密钥无效/停用统一归一到 ErrInvalidCredentials，
+// 外部无法区分具体原因。
 func TestLoginUnifiedError(t *testing.T) {
 	ctx, _, svc, _, _ := newEnv(t)
 
@@ -88,10 +89,8 @@ func TestLoginUnifiedError(t *testing.T) {
 		t.Fatalf("首次绑定应成功: %v", err)
 	}
 	cases := map[string][2]string{
-		"名称无效":    {"不存在的人", "20260002"},
-		"密钥无效":    {"张伟", "99999999"},
-		"跨组密钥":    {"张伟", "20260001"},
-		"组已有其他密钥": {"王芳", "20260002"},
+		"名称无效": {"不存在的人", "20260002"},
+		"密钥无效": {"张伟", "99999999"},
 	}
 	for name, c := range cases {
 		_, err := svc.Login(ctx, c[0], c[1])
@@ -101,9 +100,53 @@ func TestLoginUnifiedError(t *testing.T) {
 	}
 }
 
+// TestLoginKeyBoundElsewhere 名称与密钥各自有效、但密钥已绑定其他同行组时，
+// 返回明确的 ErrKeyBoundElsewhere（引导持卡本人联系新郎处理），而非统一模糊错误。
+func TestLoginKeyBoundElsewhere(t *testing.T) {
+	ctx, _, svc, _, _ := newEnv(t)
+
+	// K001 绑定 G001（王芳）。
+	if _, err := svc.Login(ctx, "王芳", "20260001"); err != nil {
+		t.Fatalf("首次绑定应成功: %v", err)
+	}
+	// 已绑定的 K001 搭配 G002 的登录名称：明确的已绑定错误。
+	if _, err := svc.Login(ctx, "张伟", "20260001"); !errors.Is(err, auth.ErrKeyBoundElsewhere) {
+		t.Errorf("跨组已绑定密钥应返回 ErrKeyBoundElsewhere，实际 %v", err)
+	}
+}
+
+// TestLoginSecondKeySameGroup 一个同行组可绑定多个密钥（2026-09-13 决策调整）：
+// 同组使用不同密钥登录，解析到同一同行组、看到同一份回礼。
+func TestLoginSecondKeySameGroup(t *testing.T) {
+	ctx, _, svc, _, _ := newEnv(t)
+
+	first, err := svc.Login(ctx, "王芳", "20260001")
+	if err != nil {
+		t.Fatalf("首个密钥绑定应成功: %v", err)
+	}
+	second, err := svc.Login(ctx, "王芳", "20260002")
+	if err != nil {
+		t.Fatalf("第二个密钥绑定同组应成功: %v", err)
+	}
+	if !second.FirstBind {
+		t.Error("第二个密钥首次绑定应标记 FirstBind")
+	}
+	if first.Group.GroupID != second.Group.GroupID {
+		t.Errorf("两个密钥应解析到同一同行组: %q vs %q", first.Group.GroupID, second.Group.GroupID)
+	}
+	if len(first.Group.Gifts) != len(second.Group.Gifts) {
+		t.Fatalf("同组不同密钥看到的礼品数量应一致: %d vs %d", len(first.Group.Gifts), len(second.Group.Gifts))
+	}
+	for i := range first.Group.Gifts {
+		if first.Group.Gifts[i].ID != second.Group.Gifts[i].ID {
+			t.Errorf("第 %d 份礼品不一致: %q vs %q", i+1, first.Group.Gifts[i].ID, second.Group.Gifts[i].ID)
+		}
+	}
+}
+
 // TestLoginResultAndSessionRoundTrip 登录成功返回明文令牌与组数据；令牌可解析会话。
 func TestLoginResultAndSessionRoundTrip(t *testing.T) {
-	ctx, _, svc, _, _ := newEnv(t)
+	ctx, _, svc, _, clock := newEnv(t)
 
 	res, err := svc.Login(ctx, "张伟", "20260002")
 	if err != nil {
@@ -115,8 +158,9 @@ func TestLoginResultAndSessionRoundTrip(t *testing.T) {
 	if len(res.Token) != 32 {
 		t.Errorf("会话令牌应为 256 bit，实际 %d 字节", len(res.Token))
 	}
-	if res.ExpiresAt.Sub(time.Now()) < 29*24*time.Hour {
-		t.Errorf("会话有效期应约 30 天，实际到 %s", res.ExpiresAt)
+	// 有效期以注入时钟为基准断言，避免与真实时间漂移耦合。
+	if want := clock.Add(auth.SessionTTL); !res.ExpiresAt.Equal(want) {
+		t.Errorf("会话有效期应为登录时刻 + %v（%s），实际 %s", auth.SessionTTL, want, res.ExpiresAt)
 	}
 	if len(res.Group.Gifts) != 3 {
 		t.Errorf("G002 应返回 3 份礼品摘要，实际 %d", len(res.Group.Gifts))

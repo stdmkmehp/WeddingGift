@@ -18,7 +18,8 @@ type Config struct {
 	AppKeyPath string
 	// AllowedHosts 是 /api 接受的 Host 清单（不含端口）；回环地址总是允许。
 	AllowedHosts []string
-	// Texts 是 M0 §3.1 冻结的文案字段（占位默认，真实文案上线前用环境变量覆盖）。
+	// Texts 是 M0 §3.1 冻结的文案字段（新人称呼与婚期已定稿为默认值，
+	// 其余仍为占位默认，真实文案上线前用环境变量覆盖）。
 	Texts httpx.Texts
 }
 
@@ -31,13 +32,13 @@ func LoadConfig() Config {
 		AppKeyPath:   envOr("WEDDING_APP_KEY_PATH", "/data/wedding/secrets/app.key"),
 		AllowedHosts: splitAndTrim(envOr("WEDDING_ALLOWED_HOSTS", "stg.costra.cloud")),
 		Texts: httpx.Texts{
-			CoupleNames:     envOr("WEDDING_COUPLE_NAMES", "示例新人"),
-			WeddingDate:     envOr("WEDDING_DATE", "2026-10-01"),
+			CoupleNames:     envOr("WEDDING_COUPLE_NAMES", "赵伟 & 刘子璇"),
+			WeddingDate:     envOr("WEDDING_DATE", "2026-09-26"),
 			HomeIntro:       envOr("WEDDING_HOME_INTRO", "感谢你来见证我们的幸福时刻"),
-			LoginHint:       envOr("WEDDING_LOGIN_HINT", "请输入你的名字或昵称，以及卡片上的 8 位数字"),
+			LoginHint:       envOr("WEDDING_LOGIN_HINT", "请输入你的名字，以及卡片上的 8 位数字"),
 			ThanksMessage:   envOr("WEDDING_THANKS_MESSAGE", "谢谢你的祝福，这是我们为你准备的小小心意"),
 			PrivacyNote:     envOr("WEDDING_PRIVACY_NOTE", "本页仅用于展示回礼，我们只收集识别所需的信息，活动结束后删除。"),
-			ContactHint:     envOr("WEDDING_CONTACT_HINT", "如有疑问，请通过婚礼当日联系人咨询。"),
+			ContactHint:     envOr("WEDDING_CONTACT_HINT", "如有疑问，请咨询赵伟/刘子璇。"),
 			IcpFilingText:   envOr("WEDDING_ICP_FILING_TEXT", "沪ICP备2026017253号-2"),
 			IcpFilingURL:    envOr("WEDDING_ICP_FILING_URL", "https://beian.miit.gov.cn/"),
 			MaintenanceText: envOr("WEDDING_MAINTENANCE_TEXT", "页面维护中，请稍后再试。"),

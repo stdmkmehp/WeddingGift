@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift M6 安全与共享边界核对
 文档类型: 安全清单 / 残余风险确认
-版本: v1.0
-日期: 2026-09-12
+版本: v1.1
+日期: 2026-09-13
 状态: WG-602 完成，未接受的核心安全问题为零
 依赖文档: docs/00-project-brief.md（§7.2/§8）, docs/02-technical-architecture.md（§10/§18）, docs/staging-machine-brief.md
 -->
@@ -32,7 +32,7 @@
 | SQL 注入 | 全部 SQL 参数化（`internal/store`），无字符串拼接查询 | `TestLoginSQLInjection`：恒真/注释截断/堆叠删除/密钥位注入统一 401 且与基线逐字节一致，注入后正常登录可用 | 通过 |
 | XSS（输出侧） | Go `encoding/json` 默认 HTML 转义；前端动态内容一律 `textContent`；CSP `default-src 'self'` + `object-src 'none'` | `TestBootstrapEscapesHTML`：恶意组称呼输出为 ` <script> `；`ops/test.sh` 步骤 6 静态拦截 `innerHTML`/`insertAdjacentHTML` 等危险 API | 通过 |
 | 来源校验 | `/api` Host 白名单（回环恒允许）+ 非 GET 必带同源 Origin | `TestAPIGuards`：非法 Host 404、缺 Origin 403、跨源 403、非 JSON 415、未知字段 400、超 8 KB 400 | 通过 |
-| 枚举差异 | 名称无效/密钥无效/跨组/组已有密钥统一 `401 + auth_failed` 同文案；reveal 不存在/跨组统一 `404 + gift_unavailable` 同响应体 | `TestLoginUnifiedFailure`（响应逐字节一致且不设 Cookie）；`TestRevealGiftIsolation`（跨组与未知 ID 响应体一致）；`TestLoginSQLInjection`（注入与基线一致） | 通过 |
+| 枚举差异 | 名称无效/密钥无效统一 `401 + auth_failed` 同文案；「密钥已绑定其他同行组」为产品决策要求的明确提示 `401 + key_already_bound`（已绑定密钥对攻击者无可用性，且同样计入限流，见 §5 2026-09-13 增补）；reveal 不存在/跨组统一 `404 + gift_unavailable` 同响应体 | `TestLoginUnifiedFailure`（响应逐字节一致且不设 Cookie）；`TestLoginKeyAlreadyBound`（明确提示、不设 Cookie、与模糊失败可区分）；`TestRevealGiftIsolation`（跨组与未知 ID 响应体一致）；`TestLoginSQLInjection`（注入与基线一致） | 通过 |
 | 会话撤销 | 退出删会话；密钥停用删其会话且既有会话立即失效；固定 30 天过期；组停用失效 | `TestRevokedKeyInvalidatesSession`、`TestSessionInvalidatedByRevoke`（store 层）、`TestBootstrapAfterKeyRevoke`（HTTP 层：bootstrap 回 null + 清 Cookie + reveal 401）、`TestExpiredSessionRejectedByAPI` | 通过 |
 | 缓存 | 全部 JSON 响应 `Cache-Control: no-store`（`writeJSON` 统一保证）；主页 `no-cache` | `TestLoginSuccess`/`TestRevealGiftFlow`/`TestHealthzReturnsOK` 断言 no-store；`ops/verify-public.sh` §6 公网复核 bootstrap no-store | 通过 |
 | 日志泄密 | 字段白名单（request_id/route/status/error_class/internal_key_ref/first_bind）；不记录请求正文、姓名、密钥、礼品码、Cookie、完整 IP | `TestLogsDoNotLeakSecrets`：完整业务流程（登录成功/失败/限流/bootstrap/reveal/logout）后扫描日志，不含任何 fixtures 姓名/昵称/明文密钥/礼品码/会话令牌/Cookie 值 | 通过 |
@@ -79,4 +79,5 @@ WeddingGift 自身同源防护：会话 Cookie `SameSite=Lax` + Path 收编 `/we
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.1 | 2026-09-13 | 绑定约束放宽增补：一个同行组可绑定多个密钥（0001 schema 直接移除 `access_key.group_id` 唯一约束，测试阶段重置数据库不做版本兼容）；「密钥已绑定其他同行组」由统一模糊改为明确提示（`401 + key_already_bound`）——已绑定密钥对攻击者无可用性，失败仍计入 IP/密钥摘要双维度限流，日志纪律不变（`TestLogsDoNotLeakSecrets` 覆盖该新分支），枚举差异结论维持通过 |
 | v1.0 | 2026-09-12 | 完成 WG-602：应用层 12 项核对全部通过（含 M6 新增安全回归证据）；同网/同源边界复核与 2026-09-12 公网实证；残余风险确认 |

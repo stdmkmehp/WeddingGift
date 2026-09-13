@@ -26,6 +26,8 @@ function showView(name) {
     for (const [key, el] of Object.entries(views)) {
         el.hidden = key !== name;
     }
+    // 登录后新人称呼与婚期作为落款收入感谢信正文，顶部抬头不再出现。
+    $("site-header").hidden = name === "gifts";
 }
 
 // ---------- 网络 ----------
@@ -52,8 +54,12 @@ async function api(path, options = {}) {
 
 function applyServiceTexts(service) {
     serviceTexts = service;
-    $("couple-names").textContent = service.coupleNames || "示例新人";
-    $("wedding-date").textContent = service.weddingDate || "";
+    const names = service.coupleNames || "赵伟 & 刘子璇";
+    const date = service.weddingDate || "";
+    $("couple-names").textContent = names;
+    $("wedding-date").textContent = date;
+    $("signature-names").textContent = names;
+    $("signature-date").textContent = date;
     $("home-intro").textContent = service.homeIntro || "";
     $("login-hint").textContent = service.loginHint || "";
     $("privacy-note").textContent = service.privacyNote || "";
@@ -124,7 +130,7 @@ loginForm.addEventListener("submit", async (event) => {
     const key = $("login-key").value;
     // 公开格式规则就地拦截，不发请求（产品架构 §12）。
     if (name === "") {
-        showLoginError("请填写你的名字或昵称");
+        showLoginError("请填写你的名字");
         $("login-name").focus();
         return;
     }

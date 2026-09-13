@@ -1,4 +1,4 @@
-// 本文件实现 M4 鉴权所需的 store 层能力（技术架构 §8 一对一绑定算法、§6 会话）：
+// 本文件实现 M4 鉴权所需的 store 层能力（技术架构 §8 绑定算法、§6 会话）：
 // BEGIN IMMEDIATE 绑定事务、会话读写与礼品摘要查询。
 package store
 
@@ -11,7 +11,7 @@ import (
 
 // immediateConn 在专用连接上手动执行 BEGIN IMMEDIATE / COMMIT / ROLLBACK。
 // database/sql 的 BeginTx 对 SQLite 是 DEFERRED 事务；§8.2 要求绑定流程
-// 使用 BEGIN IMMEDIATE 与 UNIQUE(access_keys.group_id) 共同保护一对一关系，
+// 使用 BEGIN IMMEDIATE 与条件更新共同保护「一个密钥最多绑定一个同行组」，
 // 因此这里显式控制事务语句。所有语句都落在同一连接上，语义与 sql.Tx 等价。
 type immediateConn struct {
 	conn *sql.Conn
@@ -64,17 +64,35 @@ type LoginOutcome struct {
 	FirstBind bool
 }
 
+// LoginDenyReason 是业务层面鉴权失败的原因分类，仅当 LoginWithCredentials
+// 返回的 *LoginOutcome 为 nil 时有意义。
+type LoginDenyReason int
+
+const (
+	// LoginDenyNone 表示未拒绝（登录成功）。
+	LoginDenyNone LoginDenyReason = iota
+	// LoginDenyGeneric 是统一模糊失败：名称无效、密钥无效或已停用，
+	// 调用方不得向外部区分具体原因。
+	LoginDenyGeneric
+	// LoginDenyKeyBoundElsewhere 表示名称与密钥各自有效，但密钥已绑定
+	// 其他同行组（多为他人冒用名称提前绑定）。该状态对外明确可见，
+	// 便于持卡本人联系新郎人工处理（2026-09-13 产品决策调整）。
+	LoginDenyKeyBoundElsewhere
+)
+
 // LoginWithCredentials 执行 §8.1 的原子绑定/登录流程。
 //
 // 入参为规范化登录名称、明文密钥的 HMAC 摘要、新会话令牌摘要与会话过期时间；
-// 明文密钥从不进入本函数。返回 (outcome, true) 表示成功并 COMMIT；
-// 返回 (nil, false) 表示业务层面的鉴权失败（名称无效、密钥无效/停用、
-// 跨组、组已有其他密钥等），调用方不得向外部区分具体原因；
-// 返回 error 表示数据库级故障。
-func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, keyDigest, sessionDigest []byte, sessionExpiresAt, now string) (*LoginOutcome, bool, error) {
+// 明文密钥从不进入本函数。返回 (outcome, LoginDenyNone, nil) 表示成功并 COMMIT；
+// 返回 (nil, reason, nil) 表示业务层面的鉴权失败，reason 区分统一模糊失败与
+// 「密钥已绑定其他同行组」；返回 error 表示数据库级故障。
+//
+// 绑定关系（2026-09-13 起）：一个密钥最多绑定一个同行组；一个同行组可绑定
+// 多个密钥，同组使用任一已绑定密钥登录看到的礼品完全相同。
+func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, keyDigest, sessionDigest []byte, sessionExpiresAt, now string) (*LoginOutcome, LoginDenyReason, error) {
 	tx, err := d.BeginImmediate(ctx)
 	if err != nil {
-		return nil, false, err
+		return nil, LoginDenyNone, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -89,10 +107,10 @@ func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, ke
 		normalizedName,
 	).Scan(&memberGroupID, &salutation, &customMessage)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
+		return nil, LoginDenyGeneric, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("解析登录名称失败: %w", err)
+		return nil, LoginDenyNone, fmt.Errorf("解析登录名称失败: %w", err)
 	}
 
 	// 2. 密钥摘要 → active 密钥记录。
@@ -104,42 +122,34 @@ func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, ke
 		keyDigest,
 	).Scan(&keyID, &keyRef, &keyGroupID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
+		return nil, LoginDenyGeneric, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("查询密钥失败: %w", err)
+		return nil, LoginDenyNone, fmt.Errorf("查询密钥失败: %w", err)
 	}
 
 	firstBind := false
 	switch {
 	case !keyGroupID.Valid:
-		// 3a. 密钥未绑定：先确认目标组尚无密钥（IMMEDIATE 写锁下读是新的），
-		// 再用条件更新完成绑定；UNIQUE(group_id) 是最终防线。
-		var existing int
-		if err := tx.conn.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM access_key WHERE group_id = ?", memberGroupID,
-		).Scan(&existing); err != nil {
-			return nil, false, fmt.Errorf("检查组绑定状态失败: %w", err)
-		}
-		if existing > 0 {
-			return nil, false, nil
-		}
+		// 3a. 密钥未绑定：用条件更新完成绑定（一个同行组允许绑定多个密钥）；
+		// BEGIN IMMEDIATE 已序列化并发首绑，WHERE group_id IS NULL 保证
+		// 一个密钥最多绑定一个同行组。
 		res, err := tx.conn.ExecContext(ctx,
 			"UPDATE access_key SET group_id = ?, bound_at = ? WHERE id = ? AND group_id IS NULL",
 			memberGroupID, now, keyID,
 		)
 		if err != nil {
-			return nil, false, fmt.Errorf("绑定密钥失败: %w", err)
+			return nil, LoginDenyNone, fmt.Errorf("绑定密钥失败: %w", err)
 		}
 		if n, err := res.RowsAffected(); err != nil || n != 1 {
-			return nil, false, fmt.Errorf("绑定密钥失败: 影响行数异常: %v", err)
+			return nil, LoginDenyNone, fmt.Errorf("绑定密钥失败: 影响行数异常: %v", err)
 		}
 		firstBind = true
 	case keyGroupID.String == memberGroupID:
 		// 3b. 密钥已绑定本组：同组再次登录，仅创建会话。
 	default:
-		// 3c. 密钥已绑定其他组：通用失败。
-		return nil, false, nil
+		// 3c. 密钥已绑定其他同行组：对外明确提示密钥已被绑定。
+		return nil, LoginDenyKeyBoundElsewhere, nil
 	}
 
 	// 4. 创建会话。
@@ -148,11 +158,11 @@ func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, ke
 		VALUES (?, ?, ?, ?, ?)`,
 		sessionDigest, memberGroupID, keyID, sessionExpiresAt, now,
 	); err != nil {
-		return nil, false, fmt.Errorf("创建会话失败: %w", err)
+		return nil, LoginDenyNone, fmt.Errorf("创建会话失败: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, false, fmt.Errorf("提交登录事务失败: %w", err)
+		return nil, LoginDenyNone, fmt.Errorf("提交登录事务失败: %w", err)
 	}
 	return &LoginOutcome{
 		GroupID:            memberGroupID,
@@ -161,7 +171,7 @@ func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, ke
 		AccessKeyID:        keyID,
 		AccessKeyRef:       keyRef,
 		FirstBind:          firstBind,
-	}, true, nil
+	}, LoginDenyNone, nil
 }
 
 // SessionInfo 是一条有效会话的解析结果。

@@ -1,7 +1,8 @@
 // 公网 API：bootstrap / login / logout / gifts reveal（技术架构 §9.1 路由表）。
 //
 // 统一防护（§9.2、§10.3）：JSON 编解码、8 KB 请求体、Host/Origin 同源校验、
-// 登录失败统一模糊、敏感接口 no-store、请求 ID 由外层中间件提供。
+// 登录失败按公开格式/统一模糊/密钥已绑定三层分层、敏感接口 no-store、
+// 请求 ID 由外层中间件提供。
 package httpx
 
 import (
@@ -113,7 +114,9 @@ func (s *Server) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleLogin 处理登录：格式校验 → 限流 → 绑定事务 → 写 Cookie。
-// 失败时按 IP 与密钥摘要双维度计数；一切身份/绑定错误对外完全一致。
+// 失败时按 IP 与密钥摘要双维度计数。失败文案分三层（2026-09-13 调整）：
+// 格式错误（公开规则）、名称/密钥无效（统一模糊，防枚举）、
+// 密钥已绑定其他同行组（明确提示，引导持卡本人联系新郎处理）。
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if !decodeJSONBody(w, r, &req) {
@@ -146,6 +149,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			slog.String("request_id", requestIDFromContext(r.Context())),
 			slog.String("error_class", "invalid_credentials"))
 		writeError(w, http.StatusUnauthorized, "auth_failed", "名字或卡片密钥不正确，请检查卡片后重试")
+		return
+	case errors.Is(err, auth.ErrKeyBoundElsewhere):
+		s.limiter.RecordLoginFailure(ip, keyDigest)
+		s.logger.Info("login_failed",
+			slog.String("request_id", requestIDFromContext(r.Context())),
+			slog.String("error_class", "key_bound_elsewhere"))
+		writeError(w, http.StatusUnauthorized, "key_already_bound", "这张卡片密钥已被绑定，如果卡片就在你手上，请联系新郎（赵伟）处理")
 		return
 	case err != nil:
 		s.logger.Error("login_error",

@@ -126,8 +126,9 @@ func TestLoginSuccess(t *testing.T) {
 	}
 }
 
-// TestLoginUnifiedFailure 是 G4 关键安全测试：名称错 / 密钥错 / 跨组 / 组已有密钥，
+// TestLoginUnifiedFailure 是 G4 关键安全测试：名称错 / 密钥错（含停用），
 // 外部响应（状态码 + 响应体）必须完全一致，不可区分原因。
+// 「密钥已绑定其他同行组」是唯一的明确失败，由 TestLoginKeyAlreadyBound 覆盖。
 func TestLoginUnifiedFailure(t *testing.T) {
 	h, _ := newAPITestServer(t, nil)
 
@@ -140,8 +141,6 @@ func TestLoginUnifiedFailure(t *testing.T) {
 		"名称不存在":    `{"loginName":"不存在的人","keyCode":"20260002"}`,
 		"密钥不存在":    `{"loginName":"张伟","keyCode":"99999999"}`,
 		"名称与密钥都无效": `{"loginName":"不存在的人","keyCode":"99999999"}`,
-		"密钥已绑定其他组": `{"loginName":"张伟","keyCode":"20260001"}`,
-		"组已有其他密钥":  `{"loginName":"王芳","keyCode":"20260002"}`,
 		"全角数字密钥":   `{"loginName":"张伟","keyCode":"２０２６０００２"}`,
 	}
 	var baseline string
@@ -172,6 +171,94 @@ func TestLoginUnifiedFailure(t *testing.T) {
 	}
 	if baselineCode != http.StatusUnauthorized {
 		t.Errorf("统一鉴权失败应为 401，实际 %d", baselineCode)
+	}
+}
+
+// TestLoginKeyAlreadyBound 名称与密钥各自有效、但密钥已绑定其他同行组时，
+// 返回明确的 401 + key_already_bound 文案（引导联系新郎处理），
+// 与统一模糊失败可区分，且不设置会话 Cookie。
+func TestLoginKeyAlreadyBound(t *testing.T) {
+	h, _ := newAPITestServer(t, nil)
+
+	// K001 绑定 G001（王芳）。
+	if rec := doLogin(h, `{"loginName":"王芳","keyCode":"20260001"}`); rec.Code != http.StatusOK {
+		t.Fatalf("基线登录失败: %s", rec.Body.String())
+	}
+
+	// 已绑定的 K001 搭配 G002 的登录名称（张伟）：明确提示密钥已被绑定。
+	rec := doLogin(h, `{"loginName":"张伟","keyCode":"20260001"}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("密钥已绑定其他组应 401，实际 %d", rec.Code)
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "key_already_bound" {
+		t.Errorf("错误码 = %q, want key_already_bound", body.Error.Code)
+	}
+	if !strings.Contains(body.Error.Message, "已被绑定") || !strings.Contains(body.Error.Message, "新郎") {
+		t.Errorf("应明确提示密钥已被绑定并引导联系新郎，实际 %q", body.Error.Message)
+	}
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookieName && c.MaxAge > 0 {
+			t.Error("失败响应不得设置会话 Cookie")
+		}
+	}
+
+	// 与统一模糊失败可区分（这是产品决策要求的明确提示，非枚举泄漏：
+	// 已绑定密钥对攻击者无可用性，且失败计数同样限流）。
+	generic := doLogin(h, `{"loginName":"张伟","keyCode":"99999999"}`)
+	if generic.Body.String() == rec.Body.String() {
+		t.Error("密钥已绑定其他组必须与统一模糊失败使用不同文案")
+	}
+}
+
+// TestLoginSecondKeySameGroup 一个同行组可绑定多个密钥（2026-09-13 决策调整）：
+// 同组用第二个未绑定密钥登录成功，且看到与首个密钥完全相同的回礼。
+func TestLoginSecondKeySameGroup(t *testing.T) {
+	h, _ := newAPITestServer(t, nil)
+
+	first := doLogin(h, `{"loginName":"王芳","keyCode":"20260001"}`)
+	if first.Code != http.StatusOK {
+		t.Fatalf("首个密钥绑定失败: %s", first.Body.String())
+	}
+	second := doLogin(h, `{"loginName":"王芳","keyCode":"20260002"}`)
+	if second.Code != http.StatusOK {
+		t.Fatalf("第二个密钥绑定同组应 200，实际 %d: %s", second.Code, second.Body.String())
+	}
+
+	type sessionView struct {
+		Session struct {
+			Salutation string `json:"salutation"`
+			Gifts      []struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+			} `json:"gifts"`
+		} `json:"session"`
+	}
+	var v1, v2 sessionView
+	if err := json.Unmarshal(first.Body.Bytes(), &v1); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(second.Body.Bytes(), &v2); err != nil {
+		t.Fatal(err)
+	}
+	if v1.Session.Salutation != v2.Session.Salutation {
+		t.Errorf("同组不同密钥称呼应一致: %q vs %q", v1.Session.Salutation, v2.Session.Salutation)
+	}
+	if len(v1.Session.Gifts) != len(v2.Session.Gifts) {
+		t.Fatalf("同组不同密钥礼品数量应一致: %d vs %d", len(v1.Session.Gifts), len(v2.Session.Gifts))
+	}
+	for i := range v1.Session.Gifts {
+		if v1.Session.Gifts[i].ID != v2.Session.Gifts[i].ID {
+			t.Errorf("第 %d 份礼品应一致: %q vs %q", i+1, v1.Session.Gifts[i].ID, v2.Session.Gifts[i].ID)
+		}
 	}
 }
 

@@ -161,14 +161,12 @@ func TestDatabaseConstraints(t *testing.T) {
 		t.Error("重复 normalized_value 应被唯一约束拒绝")
 	}
 
-	// 一个同行组最多一个密钥：把两个密钥绑到同一组必须失败。
-	if err := exec(`UPDATE access_key SET group_id = (SELECT id FROM recipient_group WHERE external_ref = 'G001')
-		WHERE external_ref = 'K001'`); err != nil {
-		t.Fatalf("首个绑定应成功: %v", err)
-	}
-	if err := exec(`UPDATE access_key SET group_id = (SELECT id FROM recipient_group WHERE external_ref = 'G001')
-		WHERE external_ref = 'K002'`); err == nil {
-		t.Error("第二个密钥绑到同一组应被 UNIQUE(group_id) 拒绝")
+	// 一个同行组可绑定多个密钥（2026-09-13 起）：两个密钥绑到同一组都应成功。
+	for _, ref := range []string{"K001", "K002"} {
+		if err := exec(`UPDATE access_key SET group_id = (SELECT id FROM recipient_group WHERE external_ref = 'G001')
+			WHERE external_ref = ?`, ref); err != nil {
+			t.Errorf("密钥 %s 绑定 G001 应成功: %v", ref, err)
+		}
 	}
 
 	// 外键：成员必须属于存在的组。

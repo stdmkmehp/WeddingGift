@@ -106,13 +106,9 @@ func StatusText(s *store.Stats) string {
 	fmt.Fprintf(&b, "活跃会话: %d\n", s.Sessions)
 
 	if len(s.GroupStats) > 0 {
-		b.WriteString("\n同行组明细（external_ref | 状态 | 成员数 | active 礼品数 | 绑定密钥）:\n")
+		b.WriteString("\n同行组明细（external_ref | 状态 | 成员数 | active 礼品数 | 已绑定密钥数）:\n")
 		for _, gs := range s.GroupStats {
-			key := "未绑定"
-			if gs.KeyRef != "" {
-				key = fmt.Sprintf("%s(%s)", gs.KeyRef, gs.KeyStatus)
-			}
-			fmt.Fprintf(&b, "  %s | %s | %d | %d | %s\n", gs.ExternalRef, gs.Status, gs.MemberCount, gs.GiftCount, key)
+			fmt.Fprintf(&b, "  %s | %s | %d | %d | %d\n", gs.ExternalRef, gs.Status, gs.MemberCount, gs.GiftCount, gs.BoundKeys)
 		}
 	}
 	return b.String()

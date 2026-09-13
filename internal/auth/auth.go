@@ -1,8 +1,11 @@
 // Package auth 实现 M4 的鉴权与会话服务（WG-401～WG-404）：
-// 登录名称解析、8 位密钥校验、一对一绑定事务编排、服务端会话的创建/解析/退出。
+// 登录名称解析、8 位密钥校验、绑定事务编排、服务端会话的创建/解析/退出。
 //
-// 对外错误只有两类（产品架构 §7.1/§12）：
-//   - ErrInvalidCredentials：名称/密钥/绑定状态任一环不通过的统一模糊错误；
+// 对外错误分三类（产品架构 §7.1/§12，2026-09-13 调整）：
+//   - ErrInvalidCredentials：名称无效或密钥无效/停用的统一模糊错误，
+//     调用方不得向外区分具体原因；
+//   - ErrKeyBoundElsewhere：名称与密钥各自有效，但密钥已绑定其他同行组；
+//     该状态对外明确可见，便于持卡本人联系新郎人工处理；
 //   - ErrInvalidInput：公开格式规则不满足（空名称、超长名称、密钥非 8 位数字），
 //     格式规则本身是公开的，不构成枚举泄漏。
 //
@@ -24,6 +27,8 @@ import (
 var (
 	// ErrInvalidCredentials 是统一鉴权失败：调用方不得向外区分具体原因。
 	ErrInvalidCredentials = errors.New("名字或卡片密钥不正确")
+	// ErrKeyBoundElsewhere 表示名称与密钥各自有效，但密钥已绑定其他同行组。
+	ErrKeyBoundElsewhere = errors.New("卡片密钥已被绑定")
 	// ErrInvalidInput 是输入格式不满足公开规则（前端应已就地拦截，此处为兜底）。
 	ErrInvalidInput = errors.New("输入格式不正确")
 	// ErrSessionInvalid 表示会话不存在、已过期、密钥被停用或组被停用。
@@ -93,13 +98,16 @@ func (s *Service) Login(ctx context.Context, loginName, keyCode string) (*LoginR
 	now := s.now().UTC()
 	expiresAt := now.Add(SessionTTL)
 
-	outcome, ok, err := s.db.LoginWithCredentials(ctx, norm,
+	outcome, reason, err := s.db.LoginWithCredentials(ctx, norm,
 		s.cx.AccessKeyDigest(keyCode), cryptox.SessionTokenDigest(token),
 		expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if outcome == nil {
+		if reason == store.LoginDenyKeyBoundElsewhere {
+			return nil, ErrKeyBoundElsewhere
+		}
 		return nil, ErrInvalidCredentials
 	}
 

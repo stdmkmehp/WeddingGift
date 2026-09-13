@@ -12,8 +12,8 @@ import (
 )
 
 // loginAttempt 是测试侧发起一次登录（绑定事务）的便捷封装。
-// 返回 (outcome, ok, error)；会话摘要为每次随机生成。
-func loginAttempt(t *testing.T, db *store.DB, cx *cryptox.Service, name, keyCode string) (*store.LoginOutcome, bool, error) {
+// 返回 (outcome, reason, error)；会话摘要为每次随机生成。
+func loginAttempt(t *testing.T, db *store.DB, cx *cryptox.Service, name, keyCode string) (*store.LoginOutcome, store.LoginDenyReason, error) {
 	t.Helper()
 	token, err := cryptox.NewSessionToken()
 	if err != nil {
@@ -27,24 +27,27 @@ func loginAttempt(t *testing.T, db *store.DB, cx *cryptox.Service, name, keyCode
 
 func mustLogin(t *testing.T, db *store.DB, cx *cryptox.Service, name, keyCode string) *store.LoginOutcome {
 	t.Helper()
-	out, ok, err := loginAttempt(t, db, cx, name, keyCode)
+	out, _, err := loginAttempt(t, db, cx, name, keyCode)
 	if err != nil {
 		t.Fatalf("登录事务错误: %v", err)
 	}
-	if !ok {
+	if out == nil {
 		t.Fatalf("%s + %s 应登录成功", name, keyCode)
 	}
 	return out
 }
 
-func mustFailLogin(t *testing.T, db *store.DB, cx *cryptox.Service, name, keyCode string) {
+func mustDenyLogin(t *testing.T, db *store.DB, cx *cryptox.Service, name, keyCode string, want store.LoginDenyReason) {
 	t.Helper()
-	_, ok, err := loginAttempt(t, db, cx, name, keyCode)
+	out, reason, err := loginAttempt(t, db, cx, name, keyCode)
 	if err != nil {
 		t.Fatalf("登录事务错误: %v", err)
 	}
-	if ok {
+	if out != nil {
 		t.Fatalf("%s + %s 应登录失败", name, keyCode)
+	}
+	if reason != want {
+		t.Fatalf("%s + %s 拒绝原因 = %v, want %v", name, keyCode, reason, want)
 	}
 }
 
@@ -57,10 +60,10 @@ func TestBindingDecisionMatrix(t *testing.T) {
 	importFixtures(t, db, ctx)
 	cx := testCrypto(t)
 
-	// 无效名称 + 任意密钥：失败。
-	mustFailLogin(t, db, cx, "不存在的人", "20260001")
-	// 有效名称 + 不存在的密钥摘要：失败。
-	mustFailLogin(t, db, cx, "王芳", "99999999")
+	// 无效名称 + 任意密钥：统一模糊失败。
+	mustDenyLogin(t, db, cx, "不存在的人", "20260001", store.LoginDenyGeneric)
+	// 有效名称 + 不存在的密钥摘要：统一模糊失败。
+	mustDenyLogin(t, db, cx, "王芳", "99999999", store.LoginDenyGeneric)
 
 	// 首次绑定：本名成功。
 	out := mustLogin(t, db, cx, "王芳", "20260001")
@@ -79,18 +82,24 @@ func TestBindingDecisionMatrix(t *testing.T) {
 	// 规范化幂等：首尾空白不影响匹配。
 	mustLogin(t, db, cx, "  小芳  ", "20260001")
 
-	// 跨组：K001 已绑 G001，搭配 G002 的登录名称 → 失败。
-	mustFailLogin(t, db, cx, "张伟", "20260001")
+	// 跨组：K001 已绑 G001，搭配 G002 的登录名称 → 明确「密钥已绑定其他同行组」。
+	mustDenyLogin(t, db, cx, "张伟", "20260001", store.LoginDenyKeyBoundElsewhere)
 
-	// 组已有密钥：G001 已绑 K001，未绑定的 K002 搭配 G001 名称 → 失败，
-	// 且 K002 必须保持未绑定。
-	mustFailLogin(t, db, cx, "王芳", "20260002")
+	// 一个同行组可绑定多个密钥（2026-09-13 决策调整）：未绑定的 K002 搭配
+	// G001 名称 → 绑定成功，与 K001 归属同一同行组、看到同一份回礼。
+	out2 := mustLogin(t, db, cx, "王芳", "20260002")
+	if !out2.FirstBind {
+		t.Error("第二个密钥首次绑定应标记 FirstBind")
+	}
+	if out2.GroupID != out.GroupID {
+		t.Errorf("同组两个密钥应解析到同一同行组: %q vs %q", out2.GroupID, out.GroupID)
+	}
 	stats, err := db.Stats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.KeysBound != 1 {
-		t.Errorf("只应有 1 个已绑定密钥，实际 %d", stats.KeysBound)
+	if stats.KeysBound != 2 {
+		t.Errorf("G001 应有 2 个已绑定密钥，实际 %d", stats.KeysBound)
 	}
 
 	// 断网重试语义：同组信息重试同一请求仍然成功（幂等）。
@@ -98,11 +107,12 @@ func TestBindingDecisionMatrix(t *testing.T) {
 
 	// 带娃组：可登录成员登录，can_login=false 的儿童没有登录名称。
 	mustLogin(t, db, cx, "陈强", "20260003")
-	mustFailLogin(t, db, cx, "陈小满", "20260003")
+	mustDenyLogin(t, db, cx, "陈小满", "20260003", store.LoginDenyGeneric)
 }
 
-// TestConcurrentBindingContention 验证 §8.2 不变量：两个请求争抢同一密钥或
-// 同一同行组时最多一个成功。BEGIN IMMEDIATE + UNIQUE(group_id) 共同保证。
+// TestConcurrentBindingContention 验证 §8.2 不变量：两个请求争抢同一密钥时
+// 最多一个成功（一个密钥最多绑定一个同行组）；不同密钥绑定同一同行组互不
+// 阻塞（一个同行组允许绑定多个密钥）。BEGIN IMMEDIATE + 条件更新共同保证。
 func TestConcurrentBindingContention(t *testing.T) {
 	cx := testCrypto(t)
 
@@ -119,13 +129,13 @@ func TestConcurrentBindingContention(t *testing.T) {
 			wg.Add(1)
 			go func(name, key string) {
 				defer wg.Done()
-				_, ok, err := loginAttempt(t, db, cx, name, key)
+				out, _, err := loginAttempt(t, db, cx, name, key)
 				if err != nil {
 					t.Errorf("并发登录事务错误: %v", err)
 					successes <- false
 					return
 				}
-				successes <- ok
+				successes <- out != nil
 			}(a[0], a[1])
 		}
 		wg.Wait()
@@ -139,13 +149,13 @@ func TestConcurrentBindingContention(t *testing.T) {
 		return n
 	}
 
-	// 两个组争抢同一密钥 K001。
+	// 两个组争抢同一密钥 K001：一个密钥最多绑定一个同行组。
 	if n := run(t, [][2]string{{"王芳", "20260001"}, {"张伟", "20260001"}}); n != 1 {
 		t.Errorf("同一密钥两个组争抢应恰好一个成功，实际 %d", n)
 	}
-	// 两个密钥争抢同一组 G002（两名成员同时登录）。
-	if n := run(t, [][2]string{{"张伟", "20260002"}, {"李娜", "20260003"}}); n != 1 {
-		t.Errorf("同一组两个密钥争抢应恰好一个成功，实际 %d", n)
+	// 两个不同密钥绑定同一组 G002（两名成员同时登录）：都应成功。
+	if n := run(t, [][2]string{{"张伟", "20260002"}, {"李娜", "20260003"}}); n != 2 {
+		t.Errorf("同一组绑定两个不同密钥应两个都成功，实际 %d", n)
 	}
 }
 
@@ -162,14 +172,14 @@ func TestLoginRejectsDisabledStates(t *testing.T) {
 	if _, err := db.RevokeAccessKey(ctx, "K001"); err != nil {
 		t.Fatal(err)
 	}
-	mustFailLogin(t, db, cx, "王芳", "20260001")
+	mustDenyLogin(t, db, cx, "王芳", "20260001", store.LoginDenyGeneric)
 
 	// 停用组 G003：成员登录失败。
 	if _, err := db.ExecContext(ctx,
 		"UPDATE recipient_group SET status = 'disabled' WHERE external_ref = 'G003'"); err != nil {
 		t.Fatal(err)
 	}
-	mustFailLogin(t, db, cx, "陈强", "20260003")
+	mustDenyLogin(t, db, cx, "陈强", "20260003", store.LoginDenyGeneric)
 }
 
 // TestSessionLifecycle 会话的创建、解析、过期、删除与批量清理。
@@ -189,10 +199,10 @@ func TestSessionLifecycle(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	expires := now.Add(time.Hour)
 
-	_, ok, err := db.LoginWithCredentials(ctx, "王芳", cx.AccessKeyDigest("20260001"),
+	out, _, err := db.LoginWithCredentials(ctx, "王芳", cx.AccessKeyDigest("20260001"),
 		digest, expires.Format(time.RFC3339), now.Format(time.RFC3339))
-	if err != nil || !ok {
-		t.Fatalf("登录失败: ok=%v err=%v", ok, err)
+	if err != nil || out == nil {
+		t.Fatalf("登录失败: out=%v err=%v", out, err)
 	}
 
 	// 有效期内可解析。
@@ -228,9 +238,9 @@ func TestSessionLifecycle(t *testing.T) {
 		if i == 1 {
 			exp = now.Add(-time.Hour) // 已过期
 		}
-		if _, ok, err := db.LoginWithCredentials(ctx, "王芳", cx.AccessKeyDigest("20260001"),
-			cryptox.SessionTokenDigest(tk), exp.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil || !ok {
-			t.Fatalf("建会话失败: ok=%v err=%v", ok, err)
+		if out, _, err := db.LoginWithCredentials(ctx, "王芳", cx.AccessKeyDigest("20260001"),
+			cryptox.SessionTokenDigest(tk), exp.Format(time.RFC3339), now.Format(time.RFC3339)); err != nil || out == nil {
+			t.Fatalf("建会话失败: out=%v err=%v", out, err)
 		}
 	}
 	if err := db.DeleteSession(ctx, cryptox.SessionTokenDigest(t1)); err != nil {
@@ -259,9 +269,9 @@ func TestSessionInvalidatedByRevoke(t *testing.T) {
 
 	token, _ := cryptox.NewSessionToken()
 	now := time.Now().UTC()
-	if _, ok, err := db.LoginWithCredentials(ctx, "王芳", cx.AccessKeyDigest("20260001"),
-		cryptox.SessionTokenDigest(token), now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil || !ok {
-		t.Fatalf("登录失败: ok=%v err=%v", ok, err)
+	if out, _, err := db.LoginWithCredentials(ctx, "王芳", cx.AccessKeyDigest("20260001"),
+		cryptox.SessionTokenDigest(token), now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil || out == nil {
+		t.Fatalf("登录失败: out=%v err=%v", out, err)
 	}
 
 	if _, err := db.RevokeAccessKey(ctx, "K001"); err != nil {

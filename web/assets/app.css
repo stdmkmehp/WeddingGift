@@ -112,12 +112,40 @@ body {
     font-size: 28px;
     font-weight: 600;
     line-height: 1.35;
+}
+
+.home-intro {
     text-align: center;
+}
+
+/* 称呼是感谢信起首，靠左置于页面偏上位置 */
+.salutation {
+    text-align: left;
 }
 
 .thanks {
     margin: 0 0 var(--space-3);
     text-align: center;
+}
+
+/* ---------- 感谢信落款（登录后） ---------- */
+
+.signature {
+    margin: var(--space-5) 0 0;
+    text-align: right;
+}
+
+.signature-names {
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.signature-date {
+    margin: var(--space-1) 0 0;
+    font-size: 14px;
+    color: var(--ink-soft);
+    letter-spacing: 0.12em;
 }
 
 .custom-message {
@@ -237,11 +265,15 @@ body {
 }
 
 .btn-ghost {
-    display: flex;
-    margin: var(--space-6) auto 0;
     color: var(--ink-soft);
     background: transparent;
     border-color: var(--line);
+}
+
+/* 退出登录是独立居中的幽灵按钮；礼品卡内的幽灵按钮由 .gift-actions 布局 */
+#logout-btn {
+    display: flex;
+    margin: var(--space-6) auto 0;
 }
 
 .btn:focus-visible {

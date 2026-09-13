@@ -11,7 +11,7 @@ cmd/wedding/        单二进制入口（serve / migrate / data / status / key /
 internal/
   app/              配置、serve 生命周期、健康检查子命令
   admin/            数据文件装载、脱敏核对报告、状态文本
-  auth/             登录决策、一对一绑定编排、会话创建/解析/退出（统一模糊错误）
+  auth/             登录决策、绑定编排（一组可多密钥）、会话创建/解析/退出（分层错误）
   buildinfo/        编译期注入的版本信息
   cryptox/          app.key 加载、HKDF 派生、密钥 HMAC、礼品码 AEAD、会话令牌
   domain/           领域实体、登录名称规范化、数据契约校验（不依赖 HTTP/SQLite）
@@ -90,7 +90,7 @@ go run ./cmd/wedding backup create --output /path/to/wedding-backup.db
 
 关键语义：
 
-- 失败统一模糊：名称无效、密钥无效/停用、跨组、组已有其他密钥，外部均为 `401 + auth_failed` 同一文案；仅格式错误（公开规则）返回 `400 + invalid_input`。
+- 失败分三层：名称无效或密钥无效/停用统一 `401 + auth_failed` 同一文案；「密钥已绑定其他同行组」返回 `401 + key_already_bound` 明确提示（可联系新郎处理）；格式错误（公开规则）返回 `400 + invalid_input`。
 - 会话为 256 bit 随机令牌，数据库存 SHA-256 摘要；固定 30 天有效期（§9.4 授权的收敛决策）；密钥停用或组停用后既有会话立即失效。
 - 防护：/api 要求 Host 白名单（`WEDDING_ALLOWED_HOSTS`，回环地址总是允许）+ 非 GET 必带同源 Origin；JSON 8 KB 上限、拒绝未知字段；登录按 IP（10 分钟 60 次失败）与密钥摘要（10 分钟 10 次失败）双维度内存限流。
 - 文案由环境变量配置（`WEDDING_COUPLE_NAMES`、`WEDDING_THANKS_MESSAGE` 等，默认 M0 占位值）。

@@ -61,11 +61,11 @@ func newRevealEnv(t *testing.T, name, keyCode string) (*gift.Service, string, []
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	outcome, ok, err := db.LoginWithCredentials(ctx, domain.NormalizeLoginName(name),
+	outcome, _, err := db.LoginWithCredentials(ctx, domain.NormalizeLoginName(name),
 		cx.AccessKeyDigest(keyCode), cryptox.SessionTokenDigest(token),
 		now.Add(30*24*time.Hour).Format(time.RFC3339), now.Format(time.RFC3339))
-	if err != nil || !ok {
-		t.Fatalf("登录失败: ok=%v err=%v", ok, err)
+	if err != nil || outcome == nil {
+		t.Fatalf("登录失败: outcome=%v err=%v", outcome, err)
 	}
 	summaries, err := db.GiftSummariesForGroup(ctx, outcome.GroupID)
 	if err != nil {
