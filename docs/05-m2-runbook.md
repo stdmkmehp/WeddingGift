@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift M2 真实 URL 访问链路操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v1.4
+版本: v1.5
 日期: 2026-09-12
 状态: M2 已执行并验收通过（G2 门禁通过），里程碑关闭
 依赖文档: docs/03-development-plan.md（M2/WG-201~203）, docs/staging-machine-brief.md（§3/§5/§6/§8）, docs/02-technical-architecture.md（§12）
@@ -58,7 +58,7 @@ ops/deploy-app.sh
 脚本自动完成：
 
 1. 校验 `costra_default` 网络存在并提示避峰窗口；
-2. 创建 `/data/wedding/{data,backups,secrets,import,nginx}`（全部 0700；`data`/`backups`/`secrets` 属主为容器用户 65534——M3 起应用需写库/备份并读取 `secrets/app.key`；`import`/`nginx` 保持 root）；
+2. 创建 `/data/wedding/{data,backups,secrets,import,nginx}`（顶层与 `import` 为 root:root 0755——容器内 65534 需穿越顶层并穿越/读取 import；`data`/`backups`/`secrets` 为 0700 且属主容器用户 65534——M3 起应用需写库/备份并读取 `secrets/app.key`；`nginx` 为 root:root 0700，不进容器）；
 3. 注入版本信息（git describe / commit / UTC 构建时间）并 `docker compose -p wedding -f deploy/compose.yaml up -d --build`；
 4. 等待 `wedding-app` 健康，从 `costra-nginx` 视角验证容器名可解析；
 5. `docker stats --no-stream` 复核整机资源。
@@ -151,3 +151,4 @@ nginx 相关回滚同样**人工执行**，两种方法任选（对应说明书 
 | v1.2 | 2026-09-12 | 修正 WG-202 目录属主描述：`secrets` 属主同为容器用户 65534（root:root 0700 目录会阻止容器内非 root 进程读取 `app.key`），与 `ops/deploy-app.sh` 修复同步 |
 | v1.3 | 2026-09-12 | M2 验收通过：G2 门禁核对全部勾选，里程碑关闭，进入 M3 |
 | v1.4 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
+| v1.5 | 2026-09-12 | 修正 WG-202 目录权限描述：`/data/wedding` 顶层与 `import` 为 root:root `0755`（原"全部 0700"阻止容器 65534 穿越，M6 上机 validate 实测 permission denied），`nginx` 为 root:root `0700` 不进容器；与 `ops/deploy-app.sh`、`06-m6-runbook` §2.3 同步 |

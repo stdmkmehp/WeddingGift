@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 正式环境部署操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v2.1
+版本: v2.2
 日期: 2026-09-12
 状态: 待上机执行（WG-601/602 本地部分已完成）
 依赖文档: docs/03-development-plan.md（M6/WG-603~604）, docs/06-m6-security-review.md, docs/staging-machine-brief.md, docs/04-m0-decisions.md（§2 数据契约）
@@ -67,9 +67,13 @@ ops/staging-selfcheck.sh
 
 ```sh
 mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
-chmod 700 /data/wedding /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
-# data/backups/secrets 属主为容器运行用户 65534（应用以非 root 写库、写备份、读 app.key）；
-# import/nginx 保持 root（导入文件与 nginx 备份由 root 操作）。
+# 权限模型（容器内进程为 65534，bind mount 保留宿主机属主与权限位）：
+#   - 顶层与 import 为 root:root 0755——65534 必须能穿越顶层、并穿越+读取 import 内的
+#     CSV（文件由 root 放置，0644）；若为 root:root 0700，validate/import/serve 全链路 EACCES；
+#   - data/backups/secrets 为 65534:65534 0700——应用以非 root 写库、写备份、读 app.key；
+#   - nginx 为 root:root 0700——不进容器，仅 root 人工操作（改前备份与片段副本）。
+chmod 755 /data/wedding /data/wedding/import
+chmod 700 /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/nginx
 chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ```
 
@@ -114,7 +118,7 @@ docker compose -p wedding -f deploy/compose.yaml run --rm app migrate
 # 1. 开发机上本地预检（零写入 dry-run）
 go run ./cmd/wedding data validate --dir <真实数据目录>
 
-# 2. 上传数据包到正式机器（目录权限 0600 级保管，导入后即清理）
+# 2. 上传数据包到正式机器（文件 0644 root:root——容器内 65534 需读取；导入后即清理）
 scp -r <真实数据目录>/ root@106.54.173.55:/data/wedding/import/
 
 # 3. 上机复核（dry-run，任一错误零写入）
@@ -388,6 +392,7 @@ ops/reset-db.sh --yes    # 非交互
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.2 | 2026-09-12 | 修正 §2.3 目录权限缺陷：`/data/wedding` 顶层与 `import` 由 `0700` 改 `0755`（root 属主不变）——容器 65534 需穿越顶层并读取 import 内 CSV，原写法导致 validate/import/serve 全链路 permission denied（上机实测）；`nginx` 明确 root:root `0700` 不进容器；§2.7 上传文件明确 `0644`；与 `ops/deploy-app.sh` 同步 |
 | v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置，清库前自动备份）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§6 扩展为「备份与数据维护」，§7 应用异常回滚改走脚本 |
 | v2.0 | 2026-09-12 | 重写为自包含操作手册：从 0 部署全序列（拉码/自检/目录/app.key/构建/迁移/导入/启动/nginx/cron）、配置说明、验证、日常发布更新、回滚；不再以"M2 已就位"为前提，去除测试环境表述 |
 | v1.1 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |

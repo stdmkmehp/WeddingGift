@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v2.1
+版本: v2.2
 日期: 2026-09-12
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -531,11 +531,11 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 | `/data/wedding/data/` | SQLite 数据库 | `0700` 目录、数据库 `0600`，属主容器用户 65534 |
 | `/data/wedding/backups/` | 本机 cron 备份 | 属主容器用户 65534；默认保留最近 72 份（≈3 天），不写入 Costra 目录 |
 | `/data/wedding/secrets/` | `app.key` | `0700` 目录、`0600` 文件，属主容器用户 65534、只读挂载 |
-| `/data/wedding/import/` | 临时导入文件 | 导入后删除或移回离线位置 |
-| `/data/wedding/nginx/` | 修改前备份和 WeddingGift 片段 | 不覆盖 Costra 全量配置 |
+| `/data/wedding/import/` | 临时导入文件 | root:root `0755` 目录、`0644` 文件（容器 65534 需穿越并读取）；导入后删除或移回离线位置 |
+| `/data/wedding/nginx/` | 修改前备份和 WeddingGift 片段 | root:root `0700`，不挂载进容器；不覆盖 Costra 全量配置 |
 | `/etc/cron.d/wedding` | WeddingGift 本机备份 cron 单元 | 独立文件；不修改 Costra 的 `costra-standby`/`costra-analyze`；拆除时删除 |
 
-属主约定：`data`、`backups`、`secrets` 及其内容属主为容器运行用户 65534——bind mount 保留宿主机属主，容器内非 root 进程必须穿越目录并读写/读取这些文件，root 属主的 `0700` 目录会直接导致访问失败；`import`、`nginx` 及 `/data/wedding` 顶层保持 root（由 root 人工操作，不受 DAC 限制）。
+属主与权限约定：`data`、`backups`、`secrets` 及其内容属主为容器运行用户 65534、目录 `0700`——bind mount 保留宿主机属主，容器内非 root 进程必须穿越目录并读写/读取这些文件，root 属主的 `0700` 目录会直接导致访问失败；`/data/wedding` 顶层与 `import` 为 root:root `0755`——顶层不直接存放文件，但容器 65534 必须能穿越顶层并读取 `import` 内的 `0644` CSV，若为 `0700` 则 validate/import/serve 全链路 EACCES（2026-09-12 上机实测）；`nginx` 为 root:root `0700`，不挂载进容器、仅 root 人工操作。
 
 绝不挂载 `/data/pgsql*`、`/data/redis`、`/data/slave`、`/data/conf/*.env` 或 Docker socket。
 
@@ -725,6 +725,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.2 | 2026-09-12 | §13.1 目录权限修正：`/data/wedding` 顶层与 `import` 为 root:root `0755`（原 `0700` 阻止容器 65534 穿越，上机 `data validate` 实测 permission denied），`nginx` 明确 root:root `0700` 不挂载进容器；与 `ops/deploy-app.sh` 同步 |
 | v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§17.3 回滚改走脚本 |
 | v2.0 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置），§5/§13.1/§14.1/§17.4 全部引用同步更新 |
 | v1.9 | 2026-09-12 | M6 本地部分落地：§16 测试策略收口为 `ops/test.sh` 一条命令（WG-601，含 `internal/httpx/security_test.go` 安全回归与来宾旅程 E2E）；WG-602 安全与共享边界核对完成（`docs/06-m6-security-review.md`，含 2026-09-12 同源/根 Service Worker 公网实证）；compose 落地 `/data/wedding/import` 只读挂载（§13.1 表既有目录的挂载补齐，供 WG-603 真实数据导入）；WG-603/604 上机手册 `docs/06-m6-runbook.md` 与 `ops/canary-smoke.sh` 就位 |

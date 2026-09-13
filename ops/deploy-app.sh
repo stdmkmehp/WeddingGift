@@ -3,7 +3,7 @@
 #
 # 做的事：
 #   1. 前置检查：docker 可用、costra_default 网络存在、不处于避峰窗口（仅提示）；
-#   2. 创建 /data/wedding/ 自有目录树（目录收束约定，权限 0700）；
+#   2. 创建 /data/wedding/ 自有目录树（目录收束约定；顶层/import 0755 root，data/backups/secrets 0700:65534，nginx 0700 root）；
 #   3. 注入版本信息并用 deploy/compose.yaml 构建启动 wedding-app；
 #   4. 等待容器健康，复核资源占用。
 #
@@ -43,14 +43,17 @@ case "${HOUR}" in 00|06|12|18)
   ;;
 esac
 
-echo "--- 创建 WeddingGift 自有目录（/data/wedding，0700） ---"
+echo "--- 创建 WeddingGift 自有目录（/data/wedding） ---"
 # 目录收束：运行时数据全部在 /data/wedding 下；secrets 后续放 app.key（只读挂载）。
-# data/backups/secrets 属主改为容器内运行用户（65534）：应用 M3 起需写 SQLite 与备份，
-# 并以非 root 身份读取 secrets/app.key（bind mount 保留宿主机属主，root:root 0700
-# 目录会阻止容器内进程穿越读取）；import/nginx 及 /data/wedding 顶层保持 root
-# （nginx 改前备份与导入文件由 root 操作）。
+# 权限模型（bind mount 保留宿主机属主与权限位，容器内进程以 65534 运行）：
+#   - 顶层与 import 为 root:root 0755——65534 必须能穿越顶层、并穿越+读取 import 内的
+#     CSV（文件由 root 放置，0644）；若为 root:root 0700，65534 连顶层都进不去，
+#     validate/import/serve 全链路 EACCES（2026-09-12 staging 实测）；
+#   - data/backups/secrets 为 65534:65534 0700——应用以非 root 写库、写备份、读 app.key；
+#   - nginx 为 root:root 0700——不挂载进容器，仅 root 人工操作（改前备份与片段副本）。
 mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
-chmod 700 /data/wedding /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
+chmod 755 /data/wedding /data/wedding/import
+chmod 700 /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/nginx
 chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ls -la /data/wedding
 
