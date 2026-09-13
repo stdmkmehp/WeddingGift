@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/weddinggift/wedding/internal/cryptox"
@@ -182,12 +184,19 @@ func (d *DB) ImportDataset(ctx context.Context, ds *domain.Dataset, cx *cryptox.
 }
 
 // GroupStat 是单个同行组的脱敏状态（status 命令输出用）。
-// 严格遵循「只显示内部编号和数量」，不含称呼等成员信息。
+// 含组称呼以便运维在服务器本地直观识别「这是哪个同行组」；不含成员姓名、
+// 登录名称、明文密钥与礼品码。
 type GroupStat struct {
 	ExternalRef string
+	// Salutation 是组称呼（如"张伟 & 李娜 一家"），仅由 status 子命令在
+	// 服务器本地输出，不参与任何对外响应。
+	Salutation  string
 	Status      string
 	MemberCount int
 	GiftCount   int
+	// GiftTypes 是该组 active 礼品覆盖的礼品类型（type_key 去重、字典序、
+	// ", " 分隔）；该组无 active 礼品时为空串。
+	GiftTypes string
 	// BoundKeys 是该组已绑定密钥的数量（一个同行组可绑定多个密钥）。
 	BoundKeys int
 }
@@ -247,9 +256,13 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 	}
 
 	rows, err := d.db.QueryContext(ctx, `
-		SELECT g.external_ref, g.status,
+		SELECT g.external_ref, g.salutation, g.status,
 		       (SELECT COUNT(*) FROM member m WHERE m.group_id = g.id),
 		       (SELECT COUNT(*) FROM gift_item gi WHERE gi.group_id = g.id AND gi.status = 'active'),
+		       COALESCE((SELECT GROUP_CONCAT(t.type_key)
+		                 FROM (SELECT DISTINCT gi.type_key AS type_key
+		                       FROM gift_item gi
+		                       WHERE gi.group_id = g.id AND gi.status = 'active') t), ''),
 		       (SELECT COUNT(*) FROM access_key k WHERE k.group_id = g.id)
 		FROM recipient_group g
 		ORDER BY g.external_ref`)
@@ -259,15 +272,29 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var gs GroupStat
-		if err := rows.Scan(&gs.ExternalRef, &gs.Status, &gs.MemberCount, &gs.GiftCount, &gs.BoundKeys); err != nil {
+		var rawTypes string
+		if err := rows.Scan(&gs.ExternalRef, &gs.Salutation, &gs.Status, &gs.MemberCount,
+			&gs.GiftCount, &rawTypes, &gs.BoundKeys); err != nil {
 			return nil, err
 		}
+		gs.GiftTypes = normalizeTypeKeys(rawTypes)
 		s.GroupStats = append(s.GroupStats, gs)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return s, nil
+}
+
+// normalizeTypeKeys 把 GROUP_CONCAT 的原始结果（逗号无空格、聚合顺序不保证）
+// 规范化为稳定有序、便于阅读的 "a, b, c"；空输入原样返回空串。
+func normalizeTypeKeys(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	keys := strings.Split(raw, ",")
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
 }
 
 // RevokeResult 描述 key revoke 的结果。

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -128,6 +129,45 @@ func TestImportStatsAndReload(t *testing.T) {
 	assert("已绑定密钥", stats.KeysBound, 0)
 	assert("会话", stats.Sessions, 0)
 	assert("组明细条数", len(stats.GroupStats), 3)
+
+	// 组明细须带组称呼（status 直观识别是哪个同行组），与 fixtures 逐条对照。
+	ds := loadFixtures(t)
+	wantSalutation := make(map[string]string, len(ds.Groups))
+	for _, g := range ds.Groups {
+		wantSalutation[g.ExternalRef] = g.Salutation
+	}
+	// 组明细须列出该组 active 礼品覆盖的类型（去重、字典序、", " 分隔）。
+	typesByGroup := make(map[string]map[string]bool)
+	for _, gi := range ds.GiftItems {
+		if gi.Status != domain.StatusActive {
+			continue
+		}
+		if typesByGroup[gi.GroupExternalRef] == nil {
+			typesByGroup[gi.GroupExternalRef] = make(map[string]bool)
+		}
+		typesByGroup[gi.GroupExternalRef][gi.TypeKey] = true
+	}
+	for _, gs := range stats.GroupStats {
+		want, ok := wantSalutation[gs.ExternalRef]
+		if !ok {
+			t.Errorf("组明细出现 fixtures 之外的组: %s", gs.ExternalRef)
+			continue
+		}
+		if gs.Salutation != want {
+			t.Errorf("组 %s 称呼 = %q, want %q", gs.ExternalRef, gs.Salutation, want)
+		}
+		keys := make([]string, 0, len(typesByGroup[gs.ExternalRef]))
+		for k := range typesByGroup[gs.ExternalRef] {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		if got, want := gs.GiftTypes, strings.Join(keys, ", "); got != want {
+			t.Errorf("组 %s 礼品类型 = %q, want %q", gs.ExternalRef, got, want)
+		}
+	}
+	if text := admin.StatusText(stats); !strings.Contains(text, ds.Groups[0].Salutation) {
+		t.Errorf("status 文本缺少组称呼 %q:\n%s", ds.Groups[0].Salutation, text)
+	}
 }
 
 func TestImportTwiceRefused(t *testing.T) {

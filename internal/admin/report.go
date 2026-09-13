@@ -91,7 +91,8 @@ func countActiveGifts(ds *domain.Dataset) int {
 }
 
 // StatusText 渲染 store.Stats 为脱敏文本报告（status 子命令输出）。
-// 只含内部编号与数量，不显示明文密钥或礼品码。
+// 组明细带组称呼，便于在服务器本地直观识别同行组；仍不显示成员姓名、
+// 登录名称、明文密钥与礼品码。
 func StatusText(s *store.Stats) string {
 	var b strings.Builder
 
@@ -106,10 +107,20 @@ func StatusText(s *store.Stats) string {
 	fmt.Fprintf(&b, "活跃会话: %d\n", s.Sessions)
 
 	if len(s.GroupStats) > 0 {
-		b.WriteString("\n同行组明细（external_ref | 状态 | 成员数 | active 礼品数 | 已绑定密钥数）:\n")
+		b.WriteString("\n同行组明细（external_ref | 称呼 | 状态 | 成员数 | active 礼品数 | 礼品类型 | 已绑定密钥数）:\n")
 		for _, gs := range s.GroupStats {
-			fmt.Fprintf(&b, "  %s | %s | %d | %d | %d\n", gs.ExternalRef, gs.Status, gs.MemberCount, gs.GiftCount, gs.BoundKeys)
+			fmt.Fprintf(&b, "  %s | %s | %s | %d | %d | %s | %d\n",
+				gs.ExternalRef, gs.Salutation, gs.Status, gs.MemberCount, gs.GiftCount,
+				orDash(gs.GiftTypes), gs.BoundKeys)
 		}
 	}
 	return b.String()
+}
+
+// orDash 把空串渲染为 "-"，避免明细表出现空列难以阅读。
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
