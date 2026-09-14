@@ -11,6 +11,10 @@
     --brand: #8B5E66;
     --brand-strong: #744A52;
     --champagne: #B99A6A;
+    --rose: #B97982;
+    --rose-soft: #E1C2C3;
+    --leaf: #71806B;
+    --leaf-soft: #B8BEAC;
     --ok: #47685A;
     --error: #9A4F4F;
     --line: #E7DCCB;
@@ -63,7 +67,7 @@ body {
     flex-direction: column;
 }
 
-/* ---------- 婚礼背景层（帷幕 / 照片 / 边缘线稿 / 喜字水印 / 花瓣） ---------- */
+/* ---------- 婚礼背景层（帷幕 / 照片 / 手绘花艺 / 喜字印记 / 花瓣） ---------- */
 
 /* 内容整体浮于背景层之上 */
 .app,
@@ -91,7 +95,7 @@ body[data-view="login"]::before {
     opacity: 0.36;
 }
 
-/* 帷幕：左上 15% / 右上 8% 两片灰粉酒红曲面，各自由双层错位曲面叠加出轻薄布料折光，全局保留 */
+/* 帷幕仍保持克制，但增加错层柔光，让两角像舞台开场而不是普通色块。 */
 .bg-veil {
     position: fixed;
     top: 0;
@@ -101,12 +105,12 @@ body[data-view="login"]::before {
 
 .veil-tl {
     left: 0;
-    width: clamp(240px, 36vw, 430px);
+    width: clamp(260px, 38vw, 460px);
 }
 
 .veil-tr {
     right: 0;
-    width: clamp(210px, 30vw, 380px);
+    width: clamp(220px, 31vw, 400px);
 }
 
 .bg-veil svg {
@@ -115,63 +119,224 @@ body[data-view="login"]::before {
     height: auto;
 }
 
-/* 边缘细线稿：5 处分散于视口边缘而非堆在四角，0.25–0.35pt 质感细描边、低透明；
-   香槟金只作断续短线（.dash），不绘制完整厚边框或连续花边 */
+/* 手绘花艺采用更大的裁切式构图：枝干、花瓣和留白共同形成层次，避免散落小图标。 */
 .edge-deco {
     position: fixed;
     z-index: 0;
-    width: clamp(36px, 9vw, 58px);
-    height: clamp(36px, 9vw, 58px);
-    opacity: 0.36;
     pointer-events: none;
     color: var(--brand);
+    filter: drop-shadow(0 10px 18px rgba(82, 58, 55, 0.045));
 }
-
-.edge-deco .dash { stroke-dasharray: 3.2 4.8; }
-.edge-deco .accent { color: var(--brand); }
-
-.deco-branch-tl { top: 20vh; left: var(--space-3); color: var(--champagne); }
-.deco-glass-tr  { top: var(--space-3); right: var(--space-3); }
-.deco-heart-r   { top: 30vh; right: var(--space-3); }
-.deco-flower-l  { top: 44vh; left: var(--space-3); }
-.deco-twig-br   { bottom: 15vh; right: var(--space-4); color: var(--champagne); }
 
 .edge-deco svg {
     display: block;
     width: 100%;
-    height: 100%;
+    height: auto;
 }
 
-/* 极淡单字「喜」水印：左侧中下，小尺寸、低透明，不使用居中大红囍字 */
+.edge-deco .botanical-stem,
+.edge-deco .glass-line,
+.edge-deco .heart-line {
+    fill: none;
+    stroke: var(--leaf);
+    stroke-width: 1.35;
+    opacity: 0.7;
+}
+
+.edge-deco .botanical-gold,
+.edge-deco .toast-arc,
+.edge-deco .toast-spark {
+    fill: none;
+    stroke: var(--champagne);
+    stroke-width: 1.15;
+    stroke-dasharray: 3.5 5;
+    opacity: 0.78;
+}
+
+.edge-deco .heart-line {
+    stroke: var(--brand);
+    stroke-width: 1.2;
+    opacity: 0.58;
+}
+
+.edge-deco .heart-inner {
+    fill: var(--rose-soft);
+    opacity: 0.12;
+}
+
+.edge-deco .leaf-fill {
+    stroke: none;
+}
+
+.edge-deco .leaf-olive {
+    fill: var(--leaf);
+    opacity: 0.32;
+}
+
+.edge-deco .leaf-soft {
+    fill: var(--leaf-soft);
+    opacity: 0.52;
+}
+
+.edge-deco .flower-petal {
+    stroke: none;
+}
+
+.edge-deco .petal-rose {
+    fill: var(--rose);
+    opacity: 0.5;
+}
+
+.edge-deco .petal-soft {
+    fill: var(--rose-soft);
+    opacity: 0.7;
+}
+
+.edge-deco .flower-core {
+    fill: var(--champagne);
+    stroke: none;
+    opacity: 0.8;
+}
+
+.edge-deco .glass-fill {
+    fill: var(--champagne);
+    stroke: none;
+    opacity: 0.18;
+}
+
+.edge-deco .toast-bubble {
+    fill: var(--champagne);
+    stroke: none;
+    opacity: 0.5;
+}
+
+.edge-deco .bud-fill {
+    fill: var(--rose);
+    stroke: var(--champagne);
+    stroke-width: 0.8;
+    opacity: 0.56;
+}
+
+.deco-bloom-tl {
+    top: clamp(78px, 13vh, 132px);
+    left: clamp(-72px, -4.5vw, -34px);
+    width: clamp(132px, 19vw, 218px);
+    transform: rotate(-7deg);
+}
+
+.deco-toast-tr {
+    top: clamp(-38px, -2vw, -12px);
+    right: clamp(-67px, -4.5vw, -31px);
+    width: clamp(118px, 15.5vw, 176px);
+    transform: rotate(5deg);
+}
+
+.deco-heart-r {
+    top: clamp(220px, 30vh, 340px);
+    right: clamp(-68px, -4.6vw, -34px);
+    width: clamp(116px, 15vw, 170px);
+    transform: rotate(8deg);
+}
+
+.deco-bloom-ml {
+    top: clamp(385px, 49vh, 530px);
+    left: clamp(-73px, -5vw, -36px);
+    width: clamp(126px, 17vw, 192px);
+    transform: rotate(-10deg);
+}
+
+.deco-vine-br {
+    right: clamp(-84px, -5.5vw, -40px);
+    bottom: clamp(36px, 9vh, 112px);
+    width: clamp(144px, 19vw, 216px);
+    transform: rotate(3deg);
+}
+
+/* 极淡「喜」字改为细线印章，作为纸面余韵而不是孤立文字。 */
 .xi-mark {
     position: fixed;
-    left: var(--space-4);
-    top: 62vh;
+    left: clamp(-4px, 2vw, 24px);
+    top: 67vh;
     z-index: 0;
-    font-size: clamp(30px, 7vw, 42px);
-    font-weight: 300;
+    width: clamp(44px, 5vw, 64px);
+    height: clamp(44px, 5vw, 64px);
+    display: grid;
+    place-items: center;
+    font-family: "Songti SC", STSong, "Noto Serif CJK SC", serif;
+    font-size: clamp(31px, 3.4vw, 42px);
+    font-weight: 400;
     line-height: 1;
     color: var(--brand);
-    opacity: 0.08;
+    opacity: 0.12;
     pointer-events: none;
     user-select: none;
 }
 
-/* 窄屏收缩边缘装饰与水印，避免与正文、页脚拥挤 */
-@media (max-width: 420px) {
+.xi-mark::before,
+.xi-mark::after {
+    content: "";
+    position: absolute;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+}
+
+.xi-mark::before {
+    inset: 0;
+    transform: rotate(-12deg);
+}
+
+.xi-mark::after {
+    inset: 5px;
+    opacity: 0.5;
+    transform: rotate(12deg);
+}
+
+/* 低宽度下保留构图，但扩大裁切比例，绝不压到输入控件或正文。 */
+@media (max-width: 700px) {
     .edge-deco {
-        width: 32px;
-        height: 32px;
-        opacity: 0.28;
+        filter: none;
+    }
+
+    .deco-bloom-tl {
+        top: 94px;
+        left: -56px;
+        width: 112px;
+    }
+
+    .deco-toast-tr {
+        top: -27px;
+        right: -42px;
+        width: 104px;
+    }
+
+    .deco-heart-r {
+        top: 31vh;
+        right: -44px;
+        width: 100px;
+    }
+
+    .deco-bloom-ml {
+        top: 51vh;
+        left: -54px;
+        width: 108px;
+    }
+
+    .deco-vine-br {
+        right: -62px;
+        bottom: 70px;
+        width: 128px;
     }
 
     .xi-mark {
-        font-size: 28px;
-        top: 66vh;
+        left: -8px;
+        top: 67vh;
+        width: 42px;
+        height: 42px;
+        font-size: 29px;
     }
 }
 
-/* 花瓣：全局飘落（登录页与登录后页面均有）；少量、慢速、低透明 */
+/* 花瓣采用带双瓣凹口、半透明高光与细叶脉的 SVG；外层负责下落，内层负责翻飞。 */
 .petals {
     position: fixed;
     inset: 0;
@@ -182,29 +347,124 @@ body[data-view="login"]::before {
 
 .petal {
     position: absolute;
-    top: -24px;
-    width: 13px;
-    height: 10px;
-    background: var(--brand);
-    border-radius: 100% 3px 100% 3px;
+    top: -72px;
+    width: clamp(24px, 2.8vw, 34px);
+    aspect-ratio: 40 / 52;
     opacity: 0;
-    animation: petal-fall 16s linear infinite;
+    will-change: transform, opacity;
+    animation: petal-descend var(--fall-duration) linear var(--fall-delay) infinite;
 }
 
-.petal:nth-child(1) { left: 12%; animation-duration: 15s; animation-delay: 0s; }
-.petal:nth-child(2) { left: 30%; animation-duration: 19s; animation-delay: 5s; width: 10px; height: 8px; }
-.petal:nth-child(3) { left: 52%; animation-duration: 17s; animation-delay: 9s; }
-.petal:nth-child(4) { left: 71%; animation-duration: 21s; animation-delay: 2.5s; width: 9px; height: 7px; }
-.petal:nth-child(5) { left: 87%; animation-duration: 18s; animation-delay: 12s; width: 11px; height: 9px; }
+.petal svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    transform-origin: 50% 68%;
+    filter: drop-shadow(0 3px 3px rgba(91, 60, 65, 0.1));
+    animation: petal-flutter var(--flutter-duration) ease-in-out var(--fall-delay) infinite;
+}
 
-@keyframes petal-fall {
-    0%   { transform: translate3d(0, -5vh, 0) rotate(0deg); opacity: 0; }
-    8%   { opacity: 0.28; }
-    25%  { transform: translate3d(3vw, 26vh, 0) rotate(95deg); }
-    50%  { transform: translate3d(-2vw, 52vh, 0) rotate(185deg); }
-    75%  { transform: translate3d(2.5vw, 78vh, 0) rotate(270deg); }
-    92%  { opacity: 0.2; }
-    100% { transform: translate3d(-1vw, 106vh, 0) rotate(350deg); opacity: 0; }
+.petal-body {
+    fill: var(--petal-fill);
+}
+
+.petal-highlight {
+    fill: var(--petal-highlight);
+    opacity: 0.42;
+}
+
+.petal-vein {
+    fill: none;
+    stroke: rgba(255, 250, 247, 0.78);
+    stroke-width: 1.1;
+    stroke-linecap: round;
+}
+
+.petal:nth-child(1) {
+    left: 8%;
+    --fall-duration: 19s;
+    --fall-delay: -3s;
+    --flutter-duration: 4.8s;
+    --wind-one: 5vw;
+    --wind-two: -3vw;
+    --wind-three: 4vw;
+    --petal-fill: #B7707B;
+    --petal-highlight: #EBC8CB;
+}
+
+.petal:nth-child(2) {
+    left: 27%;
+    width: clamp(22px, 2.5vw, 30px);
+    --fall-duration: 23s;
+    --fall-delay: -12s;
+    --flutter-duration: 5.9s;
+    --wind-one: -4vw;
+    --wind-two: 4vw;
+    --wind-three: -2vw;
+    --petal-fill: #C58A91;
+    --petal-highlight: #F1D6D8;
+}
+
+.petal:nth-child(3) {
+    left: 51%;
+    --fall-duration: 21s;
+    --fall-delay: -7s;
+    --flutter-duration: 5.2s;
+    --wind-one: 3vw;
+    --wind-two: -5vw;
+    --wind-three: 2vw;
+    --petal-fill: #A96572;
+    --petal-highlight: #E6C1C5;
+}
+
+.petal:nth-child(4) {
+    left: 72%;
+    width: clamp(22px, 2.6vw, 31px);
+    --fall-duration: 25s;
+    --fall-delay: -16s;
+    --flutter-duration: 6.4s;
+    --wind-one: -5vw;
+    --wind-two: 2vw;
+    --wind-three: -4vw;
+    --petal-fill: #D1A0A5;
+    --petal-highlight: #F7E2E2;
+}
+
+.petal:nth-child(5) {
+    left: 90%;
+    width: clamp(21px, 2.4vw, 29px);
+    --fall-duration: 22s;
+    --fall-delay: -9s;
+    --flutter-duration: 5.5s;
+    --wind-one: 4vw;
+    --wind-two: -4vw;
+    --wind-three: 3vw;
+    --petal-fill: #B97682;
+    --petal-highlight: #EFCFD1;
+}
+
+@keyframes petal-descend {
+    0% {
+        transform: translate3d(0, -12vh, 0);
+        opacity: 0;
+    }
+    12% { opacity: 0.48; }
+    31% { transform: translate3d(var(--wind-one), 25vh, 0); }
+    56% { transform: translate3d(var(--wind-two), 54vh, 0); }
+    80% { transform: translate3d(var(--wind-three), 80vh, 0); }
+    92% { opacity: 0.3; }
+    100% {
+        transform: translate3d(0, 112vh, 0);
+        opacity: 0;
+    }
+}
+
+@keyframes petal-flutter {
+    0%, 100% { transform: rotate(-14deg) scaleX(0.97); }
+    28% { transform: rotate(17deg) skewX(6deg) scaleX(1.01); }
+    61% { transform: rotate(-27deg) skewX(-6deg) scaleX(0.88); }
+    82% { transform: rotate(11deg) scaleX(1); }
 }
 
 /* ---------- 标题与文案 ---------- */

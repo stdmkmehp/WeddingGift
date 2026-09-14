@@ -10,115 +10,167 @@
     <link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-    <!-- 婚礼背景层：帷幕 / 边缘细线稿 / 喜字水印 / 花瓣，全部仅装饰，对辅助技术隐藏 -->
-    <!-- 帷幕：左上 15% / 右上 8% 灰粉酒红曲面，各自由双层错位曲面叠加出轻薄布料折光 -->
+    <!-- 婚礼背景层：帷幕 / 手绘花艺 / 庆祝酒杯 / 心形花环 / 喜字印记 / 花瓣，全部仅装饰，对辅助技术隐藏 -->
+    <!-- 「幕启·相见」第二版：以被视口裁切的大比例花艺构图替代零散小图标，让边缘留白成为画面的一部分。 -->
     <div class="bg-veil veil-tl" aria-hidden="true">
-        <svg viewBox="0 0 420 300" preserveAspectRatio="none" focusable="false">
+        <svg viewBox="0 0 460 330" preserveAspectRatio="none" focusable="false">
             <defs>
                 <linearGradient id="veil-tl-main" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.15"/>
+                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.18"/>
+                    <stop offset="0.62" stop-color="#A9787F" stop-opacity="0.09"/>
                     <stop offset="1" stop-color="#8B5E66" stop-opacity="0"/>
                 </linearGradient>
                 <linearGradient id="veil-tl-fold" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.08"/>
+                    <stop offset="0" stop-color="#FFF9F4" stop-opacity="0.32"/>
                     <stop offset="1" stop-color="#8B5E66" stop-opacity="0"/>
                 </linearGradient>
             </defs>
             <path fill="url(#veil-tl-main)"
-                  d="M0 0 H420 C342 92 252 176 152 214 C96 234 40 244 0 252 Z"/>
+                  d="M0 0 H460 C400 62 328 122 238 175 C156 223 74 249 0 264 Z"/>
             <path fill="url(#veil-tl-fold)"
-                  d="M0 0 H288 C236 56 172 102 102 122 C62 133 24 140 0 146 Z"/>
+                  d="M0 0 H306 C251 52 185 96 104 127 C62 143 26 150 0 154 Z"/>
+            <path fill="url(#veil-tl-fold)"
+                  d="M0 20 C82 54 135 94 168 140 C106 183 52 205 0 215 Z"/>
         </svg>
     </div>
     <div class="bg-veil veil-tr" aria-hidden="true">
         <svg viewBox="0 0 420 300" preserveAspectRatio="none" focusable="false">
             <defs>
                 <linearGradient id="veil-tr-main" x1="1" y1="0" x2="0" y2="1">
-                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.08"/>
+                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.12"/>
+                    <stop offset="0.56" stop-color="#A9787F" stop-opacity="0.06"/>
                     <stop offset="1" stop-color="#8B5E66" stop-opacity="0"/>
                 </linearGradient>
                 <linearGradient id="veil-tr-fold" x1="1" y1="0" x2="0" y2="1">
-                    <stop offset="0" stop-color="#8B5E66" stop-opacity="0.05"/>
+                    <stop offset="0" stop-color="#FFF9F4" stop-opacity="0.26"/>
                     <stop offset="1" stop-color="#8B5E66" stop-opacity="0"/>
                 </linearGradient>
             </defs>
             <path fill="url(#veil-tr-main)"
-                  d="M420 0 H0 C78 92 168 176 268 214 C324 234 380 244 420 252 Z"/>
+                  d="M420 0 H0 C58 61 129 117 218 164 C296 205 364 228 420 240 Z"/>
             <path fill="url(#veil-tr-fold)"
-                  d="M420 0 H132 C184 56 248 102 318 122 C358 133 396 140 420 146 Z"/>
+                  d="M420 0 H142 C184 46 246 87 316 110 C358 124 393 129 420 131 Z"/>
         </svg>
     </div>
-    <!-- 边缘细线稿 5 处：细枝 / 碰杯 / 独立爱心 / 单朵小花 / 细枝局部；
-         0.25–0.35pt 质感细描边，香槟金仅作断续短线（.dash），酒红小面积点缀（.accent） -->
-    <div class="edge-deco deco-branch-tl" aria-hidden="true">
-        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="0.5"
-             stroke-linecap="round" stroke-linejoin="round" focusable="false">
-            <path class="dash" d="M9 41 C15 31 21 21 33 10"/>
-            <path class="accent" d="M20 26 q-6 -0.5 -7.5 -6.5 q6 0.5 7.5 6.5 Z"/>
-            <g class="accent" transform="translate(34 9)">
-                <circle cx="0" cy="-3.1" r="1.7"/>
-                <circle cx="2.95" cy="-0.95" r="1.7"/>
-                <circle cx="1.8" cy="2.5" r="1.7"/>
-                <circle cx="-1.8" cy="2.5" r="1.7"/>
-                <circle cx="-2.95" cy="-0.95" r="1.7"/>
-                <circle cx="0" cy="0" r="0.9" fill="currentColor" stroke="none"/>
+
+    <!-- 左上：被裁切的花枝与双朵山茶，作为画面的开场。 -->
+    <div class="edge-deco deco-bloom-tl" aria-hidden="true">
+        <svg viewBox="0 0 220 248" fill="none" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path class="botanical-stem" d="M-8 238 C31 213 67 177 89 132 C110 90 143 57 205 20"/>
+            <path class="botanical-gold" d="M5 230 C40 207 67 181 86 149"/>
+            <path class="leaf-fill leaf-olive" d="M74 165 C46 157 32 136 34 116 C59 120 76 140 74 165 Z"/>
+            <path class="leaf-fill leaf-soft" d="M102 118 C96 89 109 67 130 53 C140 78 129 103 102 118 Z"/>
+            <path class="leaf-fill leaf-olive" d="M130 81 C147 58 169 52 188 56 C174 78 154 87 130 81 Z"/>
+            <g class="blossom" transform="translate(142 77) rotate(16)">
+                <path class="flower-petal petal-rose" d="M0 0 C-14 -15 -12 -32 -1 -40 C11 -30 14 -15 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(72)" d="M0 0 C-14 -15 -12 -32 -1 -40 C11 -30 14 -15 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(144)" d="M0 0 C-14 -15 -12 -32 -1 -40 C11 -30 14 -15 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(216)" d="M0 0 C-14 -15 -12 -32 -1 -40 C11 -30 14 -15 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(288)" d="M0 0 C-14 -15 -12 -32 -1 -40 C11 -30 14 -15 0 0 Z"/>
+                <circle class="flower-core" r="5"/>
+            </g>
+            <g class="blossom blossom-small" transform="translate(84 142) rotate(-10)">
+                <path class="flower-petal petal-soft" d="M0 0 C-9 -10 -8 -21 -1 -27 C8 -20 10 -10 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(72)" d="M0 0 C-9 -10 -8 -21 -1 -27 C8 -20 10 -10 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(144)" d="M0 0 C-9 -10 -8 -21 -1 -27 C8 -20 10 -10 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(216)" d="M0 0 C-9 -10 -8 -21 -1 -27 C8 -20 10 -10 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(288)" d="M0 0 C-9 -10 -8 -21 -1 -27 C8 -20 10 -10 0 0 Z"/>
+                <circle class="flower-core" r="3.3"/>
             </g>
         </svg>
     </div>
-    <div class="edge-deco deco-glass-tr" aria-hidden="true">
-        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="0.55"
-             stroke-linecap="round" stroke-linejoin="round" focusable="false">
-            <g transform="rotate(-12 17 20)">
-                <path d="M11 9 h12 v7.5 a6 6 0 0 1 -12 0 Z"/>
-                <path d="M17 22.5 v9.5"/>
-                <path d="M12.5 32 h9"/>
+
+    <!-- 右上：一组带香槟弧面的高脚杯，以碰杯动势呼应婚礼庆祝。 -->
+    <div class="edge-deco deco-toast-tr" aria-hidden="true">
+        <svg viewBox="0 0 190 210" fill="none" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path class="toast-arc" d="M34 35 C76 11 120 13 164 37"/>
+            <g transform="rotate(-12 67 103)">
+                <path class="glass-line" d="M35 37 H93 C91 73 82 94 64 103 C46 94 37 73 35 37 Z"/>
+                <path class="glass-fill" d="M39 66 H89 C85 83 77 94 64 99 C51 94 43 83 39 66 Z"/>
+                <path class="glass-line" d="M64 103 V157"/>
+                <path class="glass-line" d="M40 159 H88"/>
             </g>
-            <g transform="rotate(12 31 20)">
-                <path d="M25 9 h12 v7.5 a6 6 0 0 1 -12 0 Z"/>
-                <path d="M31 22.5 v9.5"/>
-                <path d="M26.5 32 h9"/>
+            <g transform="rotate(12 118 98)">
+                <path class="glass-line" d="M91 30 H149 C147 66 138 87 120 96 C102 87 93 66 91 30 Z"/>
+                <path class="glass-fill" d="M95 59 H145 C141 76 133 87 120 92 C107 87 99 76 95 59 Z"/>
+                <path class="glass-line" d="M120 96 V150"/>
+                <path class="glass-line" d="M96 152 H144"/>
             </g>
+            <path class="toast-spark" d="M94 22 V7 M87 14 H101 M156 79 V65 M149 72 H163"/>
+            <circle class="toast-bubble" cx="157" cy="47" r="3.2"/>
+            <circle class="toast-bubble" cx="168" cy="58" r="2"/>
         </svg>
     </div>
+
+    <!-- 右侧：花藤环抱的心形，不使用孤立通用爱心图标。 -->
     <div class="edge-deco deco-heart-r" aria-hidden="true">
-        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="0.5"
-             stroke-linecap="round" stroke-linejoin="round" focusable="false">
-            <path d="M24 36 C21.5 33.8 11 26 11 19.4 C11 15.3 14.2 12 18.2 12
-                     C20.4 12 22.2 13 24 14.8 C25.8 13 27.6 12 29.8 12
-                     C33.8 12 37 15.3 37 19.4 C37 26 26.5 33.8 24 36 Z"/>
-        </svg>
-    </div>
-    <div class="edge-deco deco-flower-l" aria-hidden="true">
-        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="0.5"
-             stroke-linecap="round" stroke-linejoin="round" focusable="false">
-            <path d="M24 44 C23 37 23.5 30 24 24"/>
-            <path d="M23.5 33 q-5.5 -0.5 -6.5 -5.5 q5.5 0.5 6.5 5.5 Z"/>
-            <g transform="translate(24 17)">
-                <circle cx="0" cy="-4" r="2.1"/>
-                <circle cx="3.8" cy="-1.2" r="2.1"/>
-                <circle cx="2.35" cy="3.3" r="2.1"/>
-                <circle cx="-2.35" cy="3.3" r="2.1"/>
-                <circle cx="-3.8" cy="-1.2" r="2.1"/>
-                <circle cx="0" cy="0" r="1" fill="currentColor" stroke="none"/>
+        <svg viewBox="0 0 180 210" fill="none" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path class="heart-line" d="M90 174 C56 149 30 124 30 85 C30 61 47 46 68 46 C79 46 86 52 90 61 C94 52 101 46 112 46 C133 46 150 61 150 85 C150 124 124 149 90 174 Z"/>
+            <path class="heart-inner" d="M90 157 C64 136 47 114 47 86 C47 71 56 61 69 61 C79 61 86 67 90 76 C94 67 101 61 111 61 C124 61 133 71 133 86 C133 114 116 136 90 157 Z"/>
+            <path class="botanical-gold" d="M22 162 C44 142 51 126 53 107"/>
+            <path class="leaf-fill leaf-olive" d="M46 132 C28 132 17 120 14 106 C31 106 43 116 46 132 Z"/>
+            <path class="leaf-fill leaf-soft" d="M51 113 C54 95 66 84 79 80 C79 98 69 110 51 113 Z"/>
+            <g class="blossom blossom-small" transform="translate(45 145) rotate(20)">
+                <path class="flower-petal petal-soft" d="M0 0 C-7 -8 -6 -18 -1 -23 C7 -17 8 -8 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(72)" d="M0 0 C-7 -8 -6 -18 -1 -23 C7 -17 8 -8 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(144)" d="M0 0 C-7 -8 -6 -18 -1 -23 C7 -17 8 -8 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(216)" d="M0 0 C-7 -8 -6 -18 -1 -23 C7 -17 8 -8 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(288)" d="M0 0 C-7 -8 -6 -18 -1 -23 C7 -17 8 -8 0 0 Z"/>
+                <circle class="flower-core" r="2.7"/>
             </g>
         </svg>
     </div>
-    <div class="edge-deco deco-twig-br" aria-hidden="true">
-        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="0.5"
-             stroke-linecap="round" stroke-linejoin="round" focusable="false">
-            <path class="dash" d="M39 42 C33 33 27 25 15 14"/>
-            <path class="accent" d="M24 24 q5.5 -0.5 6.5 -5.5 q-5.5 0.5 -6.5 5.5 Z"/>
+
+    <!-- 左侧：舒展的大朵花与细长枝干，留出安静的中部阅读区。 -->
+    <div class="edge-deco deco-bloom-ml" aria-hidden="true">
+        <svg viewBox="0 0 190 232" fill="none" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path class="botanical-stem" d="M12 228 C36 190 67 159 86 119 C101 87 111 50 119 10"/>
+            <path class="botanical-gold" d="M22 219 C55 187 76 158 87 128"/>
+            <path class="leaf-fill leaf-olive" d="M68 157 C43 151 28 132 29 111 C52 116 68 133 68 157 Z"/>
+            <path class="leaf-fill leaf-soft" d="M91 121 C108 101 131 96 150 102 C135 121 114 127 91 121 Z"/>
+            <g class="blossom" transform="translate(111 62) rotate(-9)">
+                <path class="flower-petal petal-soft" d="M0 0 C-16 -17 -14 -36 -1 -46 C13 -35 16 -17 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(72)" d="M0 0 C-16 -17 -14 -36 -1 -46 C13 -35 16 -17 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(144)" d="M0 0 C-16 -17 -14 -36 -1 -46 C13 -35 16 -17 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(216)" d="M0 0 C-16 -17 -14 -36 -1 -46 C13 -35 16 -17 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(288)" d="M0 0 C-16 -17 -14 -36 -1 -46 C13 -35 16 -17 0 0 Z"/>
+                <circle class="flower-core" r="5.4"/>
+            </g>
+            <path class="botanical-stem" d="M89 125 C103 137 117 145 139 148"/>
+            <circle class="bud-fill" cx="151" cy="150" r="8"/>
         </svg>
     </div>
-    <!-- 极淡单字「喜」水印：左侧中下，小尺寸、低透明，不使用居中大红囍字 -->
+
+    <!-- 右下：香槟金枝条与花苞收尾，平衡整页的对角线构图。 -->
+    <div class="edge-deco deco-vine-br" aria-hidden="true">
+        <svg viewBox="0 0 230 220" fill="none" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <path class="botanical-gold" d="M232 207 C185 191 164 162 144 124 C128 94 96 66 39 21"/>
+            <path class="botanical-stem" d="M225 213 C184 193 157 159 139 121"/>
+            <path class="leaf-fill leaf-olive" d="M157 152 C178 147 196 157 204 174 C184 177 167 169 157 152 Z"/>
+            <path class="leaf-fill leaf-soft" d="M128 105 C104 102 89 88 84 70 C106 69 122 82 128 105 Z"/>
+            <path class="leaf-fill leaf-olive" d="M101 76 C111 54 130 43 149 45 C140 66 124 77 101 76 Z"/>
+            <g class="blossom blossom-small" transform="translate(75 51) rotate(-16)">
+                <path class="flower-petal petal-soft" d="M0 0 C-8 -9 -7 -20 -1 -25 C8 -18 9 -9 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(72)" d="M0 0 C-8 -9 -7 -20 -1 -25 C8 -18 9 -9 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(144)" d="M0 0 C-8 -9 -7 -20 -1 -25 C8 -18 9 -9 0 0 Z"/>
+                <path class="flower-petal petal-rose" transform="rotate(216)" d="M0 0 C-8 -9 -7 -20 -1 -25 C8 -18 9 -9 0 0 Z"/>
+                <path class="flower-petal petal-soft" transform="rotate(288)" d="M0 0 C-8 -9 -7 -20 -1 -25 C8 -18 9 -9 0 0 Z"/>
+                <circle class="flower-core" r="3"/>
+            </g>
+            <circle class="bud-fill" cx="43" cy="24" r="7.4"/>
+        </svg>
+    </div>
+
+    <!-- 以半透明印章形式保留「喜」字，避免成为孤立的文字装饰。 -->
     <div class="xi-mark" aria-hidden="true">喜</div>
-    <!-- 慢速坠落花瓣：全局显示（登录页与登录后页面均有），prefers-reduced-motion 时静止不可见 -->
+
+    <!-- 慢速坠落花瓣：使用带双瓣凹口、内侧高光与叶脉的 SVG，而非圆角色块；全局显示。 -->
     <div class="petals" aria-hidden="true">
-        <i class="petal"></i>
-        <i class="petal"></i>
-        <i class="petal"></i>
-        <i class="petal"></i>
-        <i class="petal"></i>
+        <span class="petal"><svg viewBox="0 0 40 52" focusable="false"><path class="petal-body" d="M20 48 C13 43 5 35 6 23 C7 12 12 5 17 5 C18.8 5 19.7 6.5 20 8 C20.3 6.5 21.2 5 23 5 C28 5 33 12 34 23 C35 35 27 43 20 48 Z"/><path class="petal-highlight" d="M20 43 C17 35 17 23 20 11 C23 23 23 35 20 43 Z"/><path class="petal-vein" d="M20 43 C20 33 20 22 20 11"/></svg></span>
+        <span class="petal"><svg viewBox="0 0 40 52" focusable="false"><path class="petal-body" d="M20 48 C13 43 5 35 6 23 C7 12 12 5 17 5 C18.8 5 19.7 6.5 20 8 C20.3 6.5 21.2 5 23 5 C28 5 33 12 34 23 C35 35 27 43 20 48 Z"/><path class="petal-highlight" d="M20 43 C17 35 17 23 20 11 C23 23 23 35 20 43 Z"/><path class="petal-vein" d="M20 43 C20 33 20 22 20 11"/></svg></span>
+        <span class="petal"><svg viewBox="0 0 40 52" focusable="false"><path class="petal-body" d="M20 48 C13 43 5 35 6 23 C7 12 12 5 17 5 C18.8 5 19.7 6.5 20 8 C20.3 6.5 21.2 5 23 5 C28 5 33 12 34 23 C35 35 27 43 20 48 Z"/><path class="petal-highlight" d="M20 43 C17 35 17 23 20 11 C23 23 23 35 20 43 Z"/><path class="petal-vein" d="M20 43 C20 33 20 22 20 11"/></svg></span>
+        <span class="petal"><svg viewBox="0 0 40 52" focusable="false"><path class="petal-body" d="M20 48 C13 43 5 35 6 23 C7 12 12 5 17 5 C18.8 5 19.7 6.5 20 8 C20.3 6.5 21.2 5 23 5 C28 5 33 12 34 23 C35 35 27 43 20 48 Z"/><path class="petal-highlight" d="M20 43 C17 35 17 23 20 11 C23 23 23 35 20 43 Z"/><path class="petal-vein" d="M20 43 C20 33 20 22 20 11"/></svg></span>
+        <span class="petal"><svg viewBox="0 0 40 52" focusable="false"><path class="petal-body" d="M20 48 C13 43 5 35 6 23 C7 12 12 5 17 5 C18.8 5 19.7 6.5 20 8 C20.3 6.5 21.2 5 23 5 C28 5 33 12 34 23 C35 35 27 43 20 48 Z"/><path class="petal-highlight" d="M20 43 C17 35 17 23 20 11 C23 23 23 35 20 43 Z"/><path class="petal-vein" d="M20 43 C20 33 20 22 20 11"/></svg></span>
     </div>
 
     <main class="app" role="main">
