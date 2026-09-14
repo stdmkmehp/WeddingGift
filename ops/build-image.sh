@@ -65,5 +65,5 @@ fi
 
 echo ""
 echo "完成。下一步（传输到正式机器并加载）："
-echo "  scp ${OUT} root@<正式机器>:/root/WeddingGift/dist/"
+echo "  scp ${OUT} root@106.54.173.55:/root/WeddingGift/"
 echo "  ssh root@<正式机器> 'cd /root/WeddingGift && ops/load-image.sh'"

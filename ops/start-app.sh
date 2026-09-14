@@ -58,6 +58,6 @@ until [ "$(docker inspect -f '{{.State.Health.Status}}' "${CONTAINER}" 2>/dev/nu
     docker logs --tail 50 "${CONTAINER}" || true
     exit 1
   fi
-  sleep 2
+  sleep 1
 done
 echo "容器健康。"

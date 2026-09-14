@@ -10,6 +10,7 @@
 - 备份约定：SQLite online backup API（非裸 dump）；宿主机独立 `/etc/cron.d/wedding`（不动 Costra 两个 cron 文件），每小时 `:44` 触发、保留最近 72 份（≈3 天）；:44 用于避开整点 pg_dump、:47 主从检查、06:27 刷新、23:5x 分析窗口。健康检查用应用自带 `wedding healthz-check` 子命令（兼容 distroless/scratch）。
 - 目录收束约定（2026-09-12 更正）：WeddingGift 全部产出集中到两处根目录——`/root/WeddingGift/`（staging 实际 git clone 位置：代码/compose/脚本/cron 与 nginx 片段仓库副本）与 `/data/wedding/`（data/backups/secrets/import/nginx 子目录）；应用日志走 Docker json-file，不散落其他位置。`app.key` 离线异位保管，重要性等同或高于数据库备份。
 - 目录权限模型（2026-09-12 上机实测后修正）：容器内进程恒为 UID 65534 且 cap_drop ALL，bind mount 保留宿主机属主/权限位。`/data/wedding` 顶层与 `import` 必须 root:root `0755`（65534 需穿越顶层并读取 import 内 0644 CSV，`0700` 会全链路 EACCES）；`data`/`backups`/`secrets` 为 `65534:65534` `0700`；`nginx` 为 root:root `0700` 且不进容器。已固化在 `ops/deploy-app.sh` 与 06-m6-runbook §2.3、02 架构 §13.1（v2.2）。
+- 回归与验证方式（2026-09-14 定）：`ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh` 已删除，不再维护任何自动化验证脚本。本地回归用显式命令（`gofmt -l .` / `go vet ./...` / `go test -race ./...` / `CGO_ENABLED=0 go build` / `go run ./cmd/wedding data validate --dir testdata/fixtures`，见 README「M6 质量收口与正式开放」）；前端危险 API（`innerHTML` 等）、外部资源、持久存储与秘密按代码约定人工 + CR 把关；上机自检与发布后的真实 URL / canary 验证按 `docs/06-m6-runbook.md` §2.2 / §4.1 / §4.2 的人工核对清单执行。
 - 开发顺序：先实现最小主页，再通过 `https://stg.costra.cloud/wedding/` 验证真实访问链路，之后开发数据、鉴权和多礼品功能。
 - 部署边界：WeddingGift 与 Costra 数据严格隔离；Costra 既有主从与热备仅是共享机器事实，不属于 WeddingGift 架构。
 - 实体礼品卡视觉偏好（2026-09-13）：整体应温馨、清新、克制且有高级感，避免模板化大红婚庆与装饰堆砌；已确定且仅保留 A「幕启·相见」主题，作为后续正反面制稿唯一方向。酒杯、爱心与鲜花须以低饱和轻盈线稿分散并洋溢于正反面边缘，可局部出血，但必须避开人脸、文字、QR 静区及刮刮密钥功能区。
