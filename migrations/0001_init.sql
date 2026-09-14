@@ -6,8 +6,12 @@
 --     由绑定事务的条件更新保证；一个同行组可绑定多个密钥）；
 --   - 明文密钥/礼品码不入库（key_digest 为 HMAC 摘要，code_ciphertext 为 AEAD 密文）；
 --   - 时间统一以 UTC RFC3339 文本存储。
+--
+-- 幂等约定：全部语句带 IF NOT EXISTS，脚本本身可重复执行（框架层另有
+-- user_version 门控跳过已应用版本；SQL 层幂等保证手工执行或库文件存在
+-- 部分残留 schema 时重跑同样安全，不会产生重复对象或报错）。
 
-CREATE TABLE recipient_group (
+CREATE TABLE IF NOT EXISTS recipient_group (
     id             TEXT PRIMARY KEY,
     external_ref   TEXT NOT NULL UNIQUE,
     salutation     TEXT NOT NULL,
@@ -16,7 +20,7 @@ CREATE TABLE recipient_group (
     created_at     TEXT NOT NULL
 );
 
-CREATE TABLE member (
+CREATE TABLE IF NOT EXISTS member (
     id                TEXT PRIMARY KEY,
     group_id          TEXT NOT NULL REFERENCES recipient_group (id),
     external_ref      TEXT NOT NULL UNIQUE,
@@ -26,14 +30,14 @@ CREATE TABLE member (
     sort_order        INTEGER NOT NULL
 );
 
-CREATE TABLE member_login_name (
+CREATE TABLE IF NOT EXISTS member_login_name (
     id               TEXT PRIMARY KEY,
     member_id        TEXT NOT NULL REFERENCES member (id),
     normalized_value TEXT NOT NULL UNIQUE,
     kind             TEXT NOT NULL CHECK (kind IN ('real_name', 'nickname'))
 );
 
-CREATE TABLE access_key (
+CREATE TABLE IF NOT EXISTS access_key (
     id           TEXT PRIMARY KEY,
     external_ref TEXT NOT NULL UNIQUE,
     key_digest   BLOB NOT NULL UNIQUE,
@@ -43,7 +47,7 @@ CREATE TABLE access_key (
     created_at   TEXT NOT NULL
 );
 
-CREATE TABLE gift_type (
+CREATE TABLE IF NOT EXISTS gift_type (
     type_key               TEXT PRIMARY KEY,
     title                  TEXT NOT NULL,
     subtitle               TEXT NOT NULL DEFAULT '',
@@ -53,7 +57,7 @@ CREATE TABLE gift_type (
     theme_variant          TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE gift_item (
+CREATE TABLE IF NOT EXISTS gift_item (
     id                      TEXT PRIMARY KEY,
     external_ref            TEXT NOT NULL UNIQUE,
     group_id                TEXT NOT NULL REFERENCES recipient_group (id),
@@ -67,7 +71,7 @@ CREATE TABLE gift_item (
     UNIQUE (group_id, ordinal)
 );
 
-CREATE TABLE session (
+CREATE TABLE IF NOT EXISTS session (
     token_digest  BLOB PRIMARY KEY,
     group_id      TEXT NOT NULL REFERENCES recipient_group (id),
     access_key_id TEXT NOT NULL REFERENCES access_key (id),
@@ -75,7 +79,7 @@ CREATE TABLE session (
     created_at    TEXT NOT NULL
 );
 
-CREATE INDEX idx_member_group ON member (group_id);
-CREATE INDEX idx_member_login_name_member ON member_login_name (member_id);
-CREATE INDEX idx_gift_item_group ON gift_item (group_id);
-CREATE INDEX idx_session_access_key ON session (access_key_id);
+CREATE INDEX IF NOT EXISTS idx_member_group ON member (group_id);
+CREATE INDEX IF NOT EXISTS idx_member_login_name_member ON member_login_name (member_id);
+CREATE INDEX IF NOT EXISTS idx_gift_item_group ON gift_item (group_id);
+CREATE INDEX IF NOT EXISTS idx_session_access_key ON session (access_key_id);

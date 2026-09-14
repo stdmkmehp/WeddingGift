@@ -21,7 +21,7 @@ internal/
 migrations/         SQL migration（go:embed 进二进制）
 web/                单页应用（index.html + app.css + app.js，go:embed 进二进制）
 deploy/             共享机器 compose、nginx 插入片段、cron 单元样例
-ops/                构建、自检、部署、验证与本机备份脚本
+ops/                本地预览、构建、部署、停起服、数据维护与本机备份脚本
 testdata/fixtures/  虚构数据包（M0 数据契约样例，无真实数据）
 docs/               需求 / 产品 / 技术 / 开发计划 / M0 决策 / M2 手册 / M6 安全核对与手册
 ```
@@ -31,16 +31,23 @@ docs/               需求 / 产品 / 技术 / 开发计划 / M0 决策 / M2 手
 本地部分（已完成）：
 
 ```sh
-# WG-601 一条命令核心自动化回归：gofmt / go vet / go test -race（单元、数据校验、
-# repository、绑定一致性、HTTP、安全回归、来宾旅程 E2E）/ 发布形态静态构建 /
-# fixtures 契约自检 / 前端静态检查（路径纪律、危险 API、外部资源白名单）/ 秘密扫描
-ops/test.sh
+# WG-601 核心自动化回归：格式 / 静态检查 / 竞态测试（单元、数据校验、repository、
+# 绑定一致性、HTTP、安全回归、来宾旅程 E2E）/ 发布形态静态构建
+gofmt -l .                                   # 无输出为通过
+go vet ./...
+go test -race ./...
+CGO_ENABLED=0 go build -o /tmp/wedding ./cmd/wedding
+
+# fixtures 契约自检（虚构数据包本身即契约样例，validate 不过则契约已漂移）
+go run ./cmd/wedding data validate --dir testdata/fixtures
 ```
 
-- WG-602 安全与共享边界核对：SQL 注入、XSS、枚举差异、会话撤销、缓存、日志泄密、秘密扫描逐项通过，同网/同源残余风险已确认（2026-09-12 公网实证），见 `docs/06-m6-security-review.md`。
-- `ops/verify-public.sh` 已升级为 M5 真实单页检查（原 M2「链路验证」字样检查已替换），新增 bootstrap API、防护、安全响应头共 25 项；`ops/canary-smoke.sh` 为 canary API 冒烟（22 项断言，含 Cookie Path `/wedding/` 收编验证）。
+前端与秘密侧不设脚本，按约定人工 + CR 把关：`web/` 内不得出现 `innerHTML`/`insertAdjacentHTML` 等危险 API、不得引入外部资源、不得使用本地持久存储；真实数据与 `app.key` 绝不进 Git（见 `.gitignore`）。
 
-上机部分（手册见 `docs/06-m6-runbook.md`）：真实数据包（含 canary 模板）本地 dry-run → staging 构建新镜像 → migrate → 上机 validate → 单事务 import → 数量核对 → 发布前回滚点（数据库 + nginx 备份）→ 启动正式服务 → nginx 热加载 → `verify-public.sh` + `canary-smoke.sh` + 三目标浏览器人工冒烟 → 安装独立 cron `/etc/cron.d/wedding` 并验证备份轮转 → 明文源文件移出服务器。
+- WG-602 安全与共享边界核对：SQL 注入、XSS、枚举差异、会话撤销、缓存、日志泄密、秘密扫描逐项通过，同网/同源残余风险已确认（2026-09-12 公网实证），见 `docs/06-m6-security-review.md`。
+- 真实 URL 与 canary API 的验证脚本（`verify-public.sh` / `canary-smoke.sh`）已移除，改为人工按 `docs/06-m6-runbook.md` §4 的清单核对；上机自检（`staging-selfcheck.sh`）同样改为按手册 §2.2 的只读命令人工核对。
+
+上机部分（手册见 `docs/06-m6-runbook.md`）：真实数据包（含 canary 模板）本地 dry-run → staging 构建新镜像 → migrate → 上机 validate → 单事务 import → 数量核对 → 发布前回滚点（数据库 + nginx 备份）→ 启动正式服务 → nginx 热加载 → 按 §4 人工核对（真实 URL + canary API）+ 三目标浏览器人工冒烟 → 安装独立 cron `/etc/cron.d/wedding` 并验证备份轮转 → 明文源文件移出服务器。
 
 ## M3 数据与管理能力
 
@@ -133,7 +140,15 @@ go test ./...
 go vet ./...
 gofmt -l .
 
-# 本地运行（M4 起需先准备 app.key 并完成 migrate/import，见上文 M3/M4 段）
+# 本地预览（一键：隔离目录内准备 app.key 与库 → migrate → 导入 fixtures → 起服）
+ops/local_start.sh                 # http://127.0.0.1:3000/（Ctrl-C 停止）
+ops/local_start.sh --port 3211     # 换端口（端口被占用时会预检报错）
+ops/local_start.sh --reset         # 删除本地临时库重建并重新导入 fixtures
+ops/local_start.sh --no-import     # 只建 schema，仅看登录页
+# 登录样例（testdata/fixtures）：张伟 + 20260002 / 王芳 + 20260001 / 陈强 + 20260003
+# 注意：web/ 经 go:embed 编译进二进制，改 HTML/CSS/JS 后必须重跑脚本
+
+# 等价手工步骤（M4 起需先准备 app.key 并完成 migrate/import，见上文 M3/M4 段）
 export WEDDING_DB_PATH=./local.db WEDDING_APP_KEY_PATH=./app.key
 go run ./cmd/wedding serve
 # 默认监听 :3000，可用 WEDDING_LISTEN_ADDR 覆盖
@@ -161,13 +176,13 @@ WEDDING_VERSION="$(git describe --tags --always --dirty)" docker compose -f depl
 
 ## M2 真实 URL 链路（staging 执行）
 
-在 staging 机器 `/root/WeddingGift/` 仓库根按顺序执行（详见 `docs/05-m2-runbook.md`）：
+该链路已于 2026-09-12 在 staging 验收通过（G2 门禁，详见 `docs/05-m2-runbook.md`）。当时的 `ops/staging-selfcheck.sh` 与 `ops/verify-public.sh` 已随 M6 脚本精简移除，现在对应动作是：
 
 ```sh
-ops/staging-selfcheck.sh   # WG-201 只读自检（staging-machine-brief §8）
+# WG-201 只读自检：按 docs/06-m6-runbook.md §2.2 的命令人工核对（不再产出自检日志）
 ops/deploy-app.sh          # WG-202 创建 /data/wedding 目录并启动 wedding-app
 # WG-203：人工按 runbook §4 插入 /wedding/ location（片段：deploy/nginx-wedding.conf）并热加载
-ops/verify-public.sh       # 真实 URL + Costra 回归验证（任意可访问公网机器可执行）
+# 真实 URL + Costra 回归：按 docs/06-m6-runbook.md §4.1 人工核对
 ```
 
 注意：nginx 修改的对象是 Costra 项目的 live 配置，一律**人工按 runbook 操作**，不使用脚本；回滚同样人工按 runbook §6 执行。

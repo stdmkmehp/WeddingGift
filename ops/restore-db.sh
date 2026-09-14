@@ -131,7 +131,7 @@ rollback() {
     mv "${Q}"/* "${DATA_DIR}/" 2>/dev/null || true
     rmdir "${Q}" 2>/dev/null || true
   else
-    $DC -p "${PROJECT}" -f "${COMPOSE_FILE}" run --rm -T app migrate || true
+    "${REPO_ROOT}/ops/migrate.sh" || true
   fi
   echo "已恢复还原前数据库文件状态（服务仍处于停止状态），请人工核查后 ops/start-app.sh 起服。"
 }
@@ -143,14 +143,14 @@ chown 65534:65534 "${DB_FILE}"
 chmod 600 "${DB_FILE}"
 
 echo "--- 3/4 migrate（旧 schema 备份前滚；无新 migration 为 no-op） ---"
-if ! $DC -p "${PROJECT}" -f "${COMPOSE_FILE}" run --rm -T app migrate; then
+if ! "${REPO_ROOT}/ops/migrate.sh"; then
   echo "migrate 失败，备份文件可能损坏或与当前版本不兼容。"
   rollback
   exit 1
 fi
 
 echo "--- 4/4 输出脱敏统计（请与预期数据逐项核对） ---"
-if ! $DC -p "${PROJECT}" -f "${COMPOSE_FILE}" run --rm -T app status; then
+if ! "${REPO_ROOT}/ops/status.sh"; then
   echo "status 读取失败，还原结果可能异常。"
   rollback
   exit 1
@@ -159,6 +159,6 @@ fi
 echo ""
 echo "完成。服务仍处于停止状态，下一步："
 echo "  ops/start-app.sh            # 起服并等待健康"
-echo "  ops/verify-public.sh        # 真实 URL 全量验证"
-echo "  ops/canary-smoke.sh         # canary 链路冒烟（幂等）"
+echo "  ops/status.sh               # 脱敏计数复核（可选）"
+echo "  # 发布后验证：按 docs/06-m6-runbook.md §4.1/§4.2 人工核对"
 [ -z "${PRE}" ] || echo "兜底备份保留于：${PRE}（确认还原无误后可人工删除）"

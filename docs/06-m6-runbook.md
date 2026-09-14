@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift 正式环境部署操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v2.2
-日期: 2026-09-12
+版本: v2.5
+日期: 2026-09-14
 状态: 待上机执行（WG-601/602 本地部分已完成）
 依赖文档: docs/03-development-plan.md（M6/WG-603~604）, docs/06-m6-security-review.md, docs/staging-machine-brief.md, docs/04-m0-decisions.md（§2 数据契约）
 -->
@@ -39,7 +39,7 @@
 
 ## 1. 前置条件
 
-- 发布候选 commit 在开发机本地 `ops/test.sh` 全绿（gofmt/vet/`go test -race`/静态构建/fixtures 契约/前端静态检查/秘密扫描）。
+- 发布候选 commit 在开发机本地回归全绿（命令见 README「M6 质量收口与正式开放」）：`gofmt -l .` 无输出、`go vet ./...`、`go test -race ./...`、`CGO_ENABLED=0 go build -o /tmp/wedding ./cmd/wedding`、`go run ./cmd/wedding data validate --dir testdata/fixtures`；前端危险 API / 外部资源 / 持久存储与秘密按约定人工 + CR 把关。
 - 真实数据包已按 §3.3 准备好（含 canary 模板），人工核对清单逐项打勾。
 - 当前时间避开避峰窗口（见上方红线）。
 
@@ -57,11 +57,25 @@ cd /root/WeddingGift && git checkout <发布候选 commit>
 
 ### 2.2 机器只读自检
 
+> 原 `ops/staging-selfcheck.sh` 已移除，改为按下列只读命令人工核对（需留存时自行 `tee` 到 `/data/wedding/nginx/selfcheck-<UTC时间戳>.log`，该目录不进容器、不进 Git）。
+
 ```sh
-ops/staging-selfcheck.sh
+# 资源余量（需再容纳 256M / 0.5 CPU）
+nproc; free -m; df -h /data
+docker stats --no-stream                                                     # 三栈占用与说明书一致，无异常吃满
+ss -tlnp | grep -E ':3000\b'                                                 # 无计划外端口占用（应用不发布端口）
+
+# 共享依赖与残留
+docker network ls | grep costra_default                                      # 网络存在
+ls /etc/cron.d/                                                              # costra-standby / costra-analyze 原样；wedding 尚不存在
+grep -c wedding /data/conf/nginx/costra.cloud.conf                           # 期望 0
+grep -cE 'location / \{[[:space:]]*return 404' /data/conf/nginx/costra.cloud.conf   # 期望 1
+
+# Costra 容器无异常
+docker ps --format '{{.Names}}\t{{.Status}}'
 ```
 
-全部为只读命令，结果保存到 `ops/records/selfcheck-<UTC时间戳>.log`。逐项核对：CPU/内存/磁盘余量足以再容纳 256M/0.5 CPU；`costra_default` 网络存在；cron 与 nginx live conf 中无 wedding 残留；Costra 容器无异常。任一不达标：停止排查，不进入下一步。
+逐项核对：CPU/内存/磁盘余量足以再容纳 256M/0.5 CPU；`costra_default` 网络存在；cron 与 nginx live conf 中无 wedding 残留；Costra 容器无异常。任一不达标：停止排查，不进入下一步。
 
 ### 2.3 创建数据目录
 
@@ -112,7 +126,7 @@ cd /root/WeddingGift && ops/load-image.sh
 ### 2.6 数据库 schema 迁移
 
 ```sh
-docker compose -p wedding -f deploy/compose.yaml run --rm app migrate
+ops/migrate.sh
 # 预期输出：migrate 完成：本次应用 N 个 migration，当前 schema 版本 1
 ```
 
@@ -127,14 +141,10 @@ go run ./cmd/wedding data validate --dir <真实数据目录>
 # 2. 上传数据包到正式机器（文件 0644 root:root——容器内 65534 需读取；导入后即清理）
 scp -r <真实数据目录>/ root@106.54.173.55:/data/wedding/import/
 
-# 3. 上机复核（dry-run，任一错误零写入）
-docker compose -p wedding -f deploy/compose.yaml run --rm app data validate --dir /data/wedding/import
-
-# 4. 单事务导入
-docker compose -p wedding -f deploy/compose.yaml run --rm app data import --dir /data/wedding/import
-
-# 5. 脱敏数量核对：与离线事实源逐项比对（组/成员/登录名称/礼品/密钥计数）
-docker compose -p wedding -f deploy/compose.yaml run --rm app status
+# 3–5. 上机复核（dry-run，任一错误零写入）→ 单事务导入 → 脱敏数量核对：
+#      ops/import-data.sh 一次性完成三步；validate 不过则中止零写入，
+#      末尾 status 计数与离线事实源逐项比对（组/成员/登录名称/礼品/密钥）
+ops/import-data.sh
 
 # 6. 回滚点：导入后立即备份一份数据库
 TS="$(date -u +%Y%m%d-%H%M%S)"
@@ -217,7 +227,7 @@ rm -rf /data/wedding/import/*
 
 ### 3.3 数据包规范（含 canary 模板）
 
-六个契约 CSV 的字段定义见 `docs/04-m0-decisions.md` §2。canary 虚构数据用于 §4.2 冒烟，与 `ops/canary-smoke.sh` 默认值一一对应：
+六个契约 CSV 的字段定义见 `docs/04-m0-decisions.md` §2。canary 虚构数据用于 §4.2 冒烟，与 §4.2 的用例一一对应：
 
 ```csv
 # recipient_groups.csv 追加
@@ -256,21 +266,103 @@ GIC03,CANARY2,movie_voucher,CANARYMOVIE903,,,,2,active
 
 ## 4. 验证
 
-### 4.1 真实 URL 自动化验证（25 项检查）
+### 4.1 真实 URL 核对（8 组检查项）
+
+> 原 `ops/verify-public.sh` 已移除，改为按下列命令人工核对。全部为只读请求，在任意能访问公网的机器都可再跑一遍复核。
 
 ```sh
-ops/verify-public.sh
+BASE="https://stg.costra.cloud/wedding"
+SITE="https://stg.costra.cloud"
+
+# 1 主页与重定向
+curl -sS -o /dev/null -w '%{http_code}\n' "${BASE}/"     # 200，且为真实单页应用
+curl -sS -o /dev/null -w '%{http_code}\n' "${SITE}/wedding"   # 301 → /wedding/
+
+# 2 静态资源与页面纪律（全部相对路径，无根路径绝对引用）
+curl -sS "${BASE}/" | grep -cE '(src|href)="/'           # 期望 0
+curl -sS -o /dev/null -w '%{http_code}\n' "${BASE}/assets/app.css"   # 200
+curl -sS -o /dev/null -w '%{http_code}\n' "${BASE}/assets/app.js"    # 200
+
+# 3 健康检查
+curl -sS "${BASE}/healthz"        # 期望 status=ok、database=ok（附带 version/time/uptime）
+
+# 4 bootstrap（无会话）
+curl -sS "${BASE}/api/bootstrap"                                   # session 为 null，文案字段齐全
+curl -sS -D- -o /dev/null "${BASE}/api/bootstrap" | grep -i '^cache-control'   # no-store
+
+# 5 API 防护
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "${BASE}/api/auth/login" \
+  -H 'Content-Type: application/json' -H "Origin: ${SITE}" -d '{}'                                  # 400 invalid_input
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "${BASE}/api/auth/login" \
+  -H 'Content-Type: application/json' -H "Origin: ${SITE}" -d '{"loginName":"查无此人","keyCode":"20269001"}'  # 401 auth_failed
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "${BASE}/api/auth/login" \
+  -H 'Content-Type: application/json' -H 'Origin: https://example.com' -d '{"loginName":"甲","keyCode":"20269001"}'  # 403 forbidden
+curl -sS -o /dev/null -w '%{http_code}\n' -X POST "${BASE}/api/auth/login" \
+  -H 'Content-Type: text/plain' -H "Origin: ${SITE}" -d 'x'                                         # 415 unsupported_media_type
+
+# 6 安全响应头与 TLS
+curl -sS -D- -o /dev/null "${BASE}/" | grep -iE 'content-security-policy|x-content-type-options|x-frame-options|referrer-policy'
+curl -sS -o /dev/null -w '%{ssl_verify_result} %{http_version}\n' "${BASE}/"   # 期望 0 与 2（证书可信且走 HTTP/2）
+
+# 7 Costra 回归（不得受影响）
+curl -sS -o /dev/null -w '%{http_code}\n' "${SITE}/healthz"      # 200
+curl -sS -o /dev/null -w '%{http_code}\n' "${SITE}/__nope__"     # 404（兜底）
+curl -sS -o /dev/null -w '%{http_code}\n' "${SITE}/v1/"          # 404（未被占用）
+
+# 8 本机容器与资源
+docker ps --filter name=wedding-app --format '{{.Status}}'   # Up (healthy)
+docker stats --no-stream wedding-app                          # 远低于 256M / 0.5 CPU
 ```
 
-覆盖：主页 200 且为真实单页应用、`/wedding` 301、相对静态资源 200、`/wedding/healthz` status/database 均 ok、无根路径绝对引用、bootstrap API（session null/no-store/文案字段）、API 防护（401/403/404/415）、安全响应头（CSP/nosniff/DENY/Referrer-Policy）、Costra 回归（/healthz 200、兜底 404、未占用 /v1/）、staging 本机容器与资源回归。在任意能访问公网的机器都可再跑一遍复核。
+覆盖：主页 200 且为真实单页应用、`/wedding` 301、相对静态资源 200、`/wedding/healthz` status/database 均 ok、无根路径绝对引用、bootstrap API（session null/no-store/文案字段）、API 防护（400/401/403/415）、安全响应头与 TLS、Costra 回归（`/healthz` 200、兜底 404、未占用 `/v1/`）、本机容器与资源回归。
 
-### 4.2 canary API 冒烟（22 项断言）
+### 4.2 canary API 冒烟（8 步）
+
+> 原 `ops/canary-smoke.sh` 已移除，改为按下列 curl 序列人工核对。除首次绑定外均可重复执行（首绑后再跑同一组为「同组再登录」，仍应 200）。
 
 ```sh
-ops/canary-smoke.sh
+BASE="https://stg.costra.cloud/wedding"
+SITE="https://stg.costra.cloud"
+JAR="$(mktemp)"
+login() {   # login <名称> <8 位密钥>
+  curl -sS -b "${JAR}" -c "${JAR}" -X POST "${BASE}/api/auth/login" \
+    -H 'Content-Type: application/json' -H "Origin: ${SITE}" \
+    -d "{\"loginName\":\"$1\",\"keyCode\":\"$2\"}"
+}
+
+# 1 首绑登录（CANARY1：金丝雀甲 + KC01 20269001）
+login 金丝雀甲 20269001      # 200 + session；礼品摘要 1 份
+
+# 2 同组多名称再登录（昵称「小雀甲」+ 同一密钥），同一份回礼
+login 小雀甲 20269001        # 200
+
+# 3 同组第二密钥（未绑定的 KC03 20269003）首绑成功，看到同一份回礼
+login 金丝雀甲 20269003      # 200，礼品与第 1 步一致
+
+# 4 跨组已绑定密钥拒绝（金丝雀乙属 CANARY2 + 已绑 CANARY1 的 20269001）
+login 金丝雀乙 20269001      # 401 key_already_bound（提示可联系新郎处理）
+
+# 5 另一组登录（CANARY2：金丝雀乙 + 20269002）与多礼品摘要
+login 金丝雀乙 20269002      # 200，礼品摘要 2 份
+curl -sS -b "${JAR}" "${BASE}/api/bootstrap"
+
+# 6 逐份 reveal 与未知 giftId（giftId 取自第 5 步响应）
+curl -sS -b "${JAR}" -X POST "${BASE}/api/gifts/reveal" -H 'Content-Type: application/json' \
+  -H "Origin: ${SITE}" -d '{"giftId":"<第 5 步返回的 giftId>"}'   # 200 + 明文激活码
+curl -sS -b "${JAR}" -X POST "${BASE}/api/gifts/reveal" -H 'Content-Type: application/json' \
+  -H "Origin: ${SITE}" -d '{"giftId":"GIC99"}'                     # 404 gift_unavailable
+
+# 7 Cookie Path 收编（nginx proxy_cookie_path 将 Path 收编为 /wedding/）
+curl -sS -D- -o /dev/null -c "${JAR}" -X POST "${BASE}/api/auth/login" \
+  -H 'Content-Type: application/json' -H "Origin: ${SITE}" \
+  -d '{"loginName":"金丝雀乙","keyCode":"20269002"}' | grep -i '^set-cookie'
+
+# 8 退出与旧会话失效
+curl -sS -b "${JAR}" -X POST "${BASE}/api/auth/logout" -H "Origin: ${SITE}"   # 200
+curl -sS -b "${JAR}" "${BASE}/api/bootstrap"                                   # session 为 null
 ```
 
-覆盖：首绑登录、同组多名称再登录、同组另一成员登录、跨组拒绝、组内第二密钥拒绝、多礼品摘要与逐份 reveal、Cookie Path 收编（/wedding/）、退出与旧会话失效。脚本幂等，已绑定状态下重跑依然全过。
+覆盖：首绑登录、同组多名称再登录、同组第二密钥、跨组已绑定拒绝、另一组多礼品摘要与逐份 reveal、未知 giftId 统一 404、Cookie Path 收编（`/wedding/`）、退出与旧会话失效。
 
 ### 4.3 浏览器人工冒烟（目标浏览器矩阵，G5/G6 门禁）
 
@@ -283,8 +375,8 @@ ops/canary-smoke.sh
 
 - [ ] `docker stats --no-stream`：wedding-app 远低于 256M/0.5 CPU，Costra 各容器无异常；
 - [ ] `docker logs --tail 100 wedding-app`：无明文姓名/密钥/礼品码，无异常报错；
-- [ ] TLS 与响应头已由 `ops/verify-public.sh` §8 覆盖；
-- [ ] canary 密钥默认保持 active 不停用（虚构数据无泄漏风险，供后续复冒烟）。如需关闭：`docker compose -p wedding -f deploy/compose.yaml run --rm app key revoke --ref KC01`（注意 revoke 后冒烟脚本第 2/7 步将按预期失败）。
+- [ ] TLS 与响应头见 §4.1 第 6 组；
+- [ ] canary 密钥默认保持 active 不停用（虚构数据无泄漏风险，供后续复冒烟）。如需关闭：`docker compose -p wedding -f deploy/compose.yaml run --rm app key revoke --ref KC01`（注意 revoke 后 §4.2 第 1/2/3 步将按预期失败）。
 
 ## 5. 日常发布更新（非首次）
 
@@ -304,15 +396,13 @@ cp -p /data/conf/nginx/costra.cloud.conf "/data/wedding/nginx/costra.cloud.conf.
 # 3. 停旧容器 → schema 迁移（无新 migration 时为 no-op）→ 启动新容器
 #    （load 新镜像后 up -d 自动重建容器使用最新镜像；start-app.sh 内含等待健康）
 ops/stop-app.sh
-docker compose -p wedding -f deploy/compose.yaml run --rm app migrate
+ops/migrate.sh
 ops/start-app.sh
 
 # 4. nginx 热加载（容器重建后重新解析容器地址；不修改配置则无需备份/编辑）
 docker exec costra-nginx nginx -t && docker exec costra-nginx nginx -s reload
 
-# 5. 验证
-ops/verify-public.sh
-ops/canary-smoke.sh
+# 5. 验证：按 §4.1 真实 URL 核对 + §4.2 canary 冒烟人工执行
 ```
 
 ## 6. 备份与数据维护
@@ -344,12 +434,12 @@ ops/start-app.sh                             # 完成后起服
 
 ```sh
 ops/stop-app.sh          # 先停服（脚本仅操作数据库，运行中直接拒绝执行）
-ops/reset-db.sh          # 交互确认
-ops/reset-db.sh --yes    # 非交互
+ops/reset-db.sh          # 交互确认（--yes 非交互）
+ops/import-data.sh       # 重新导入：validate → import → status（保持停止状态执行）
 ops/start-app.sh         # 完成后起服
 ```
 
-脚本流程：打印当前 status 留档 → 清库前自动备份（`wedding-pre-reset-<TS>.db`）→ 删库（含 -wal/-shm）→ migrate 重建 schema。完成后按 §2.7 第 3–5 步重新 validate / import / status。app.key 保持不变，同一数据包可重复导入。
+脚本流程：打印当前 status 留档 → 清库前自动备份（`wedding-pre-reset-<TS>.db`）→ 删库（含 -wal/-shm）→ migrate 重建 schema。完成后保持停止状态执行 `ops/import-data.sh` 重新导入（§2.7 第 3–5 步），核对无误再 `ops/start-app.sh` 起服。app.key 保持不变，同一数据包可重复导入。
 
 ## 7. 回滚预案
 
@@ -361,7 +451,7 @@ ops/start-app.sh         # 完成后起服
 | 需整体下线业务 | 按 M2 runbook §6 人工删除 nginx wedding 块并热加载，再 `docker compose -p wedding -f deploy/compose.yaml down`（真实数据库文件保留不动，操作前再次备份） |
 | nginx 异常（`/wedding/` 全 404） | 第一嫌疑是 live conf 被 Costra 模板刷新覆盖：`grep -c wedding /data/conf/nginx/costra.cloud.conf` 为 0 即确认，按 §2.9 重新插入片段并热加载 |
 
-回滚后验证：`ops/verify-public.sh` 按当前形态核对（业务下线形态时第 1/6/7 项预期失败）；Costra 回归项必须全过。
+回滚后验证：按 §4.1 的检查组逐项核对当前形态（业务下线形态时主页、静态资源与 API 组预期失败）；Costra 回归组（第 7 组）必须全过。
 
 ## 8. 执行记录（回填）
 
@@ -372,8 +462,8 @@ ops/start-app.sh         # 完成后起服
 - app.key 离线异位保管确认：
 - 真实数据核对：组 __ / 成员 __ / 登录名称 __ / 礼品 __ / 密钥 __（与离线事实源一致：是/否）
 - 回滚点：数据库备份 `______`；nginx 备份 `______`
-- `verify-public.sh`：__ 通过 / __ 失败
-- `canary-smoke.sh`：__ 通过 / __ 失败
+- §4.1 真实 URL 核对：__ 通过 / __ 失败
+- §4.2 canary 冒烟（8 步）：__ 通过 / __ 失败
 - 浏览器人工冒烟（iOS Safari / Android Chrome / 微信 WebView）：
 - cron 安装时间与首次自动备份确认（下个 :44 后 `ls -lt /data/wedding/backups/`）：
 - `docker stats` 摘要与 Costra 回归结论：
@@ -382,7 +472,7 @@ ops/start-app.sh         # 完成后起服
 
 ## 9. G6 门禁核对
 
-- [ ] 产品验收 PA-01～PA-15 全部通过（PA-01/14 由 `verify-public.sh` 与浏览器冒烟覆盖，其余由 `ops/test.sh` 自动化与 `canary-smoke.sh` 覆盖）；
+- [ ] 产品验收 PA-01～PA-15 全部通过（PA-01/14 由 §4.1 真实 URL 核对与浏览器冒烟覆盖，其余由开发机本地自动化回归（README「M6 质量收口与正式开放」）与 §4.2 canary 冒烟覆盖）；
 - [ ] 真实数据数量与离线事实源一致；明文源文件已移出服务器；
 - [ ] canary 冒烟（API + 三目标浏览器）通过；
 - [ ] cron 独立单元安装，手动备份两次成功，最近备份确认，72 份轮转逻辑就位；
@@ -396,6 +486,8 @@ ops/start-app.sh         # 完成后起服
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.5 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：本地回归改为 README 中列出的显式命令（前端危险 API / 外部资源 / 持久存储与秘密按约定人工 + CR 把关）；§1 前置条件同步；§2.2 自检改为列明只读命令人工核对（不再产出 `ops/records/` 日志）；§4.1 改为 8 组真实 URL 核对命令、§4.2 改为 8 步 canary curl 序列；§3.3/§4.4/§5/§7/§8/§9 同步移除脚本引用 |
+| v2.4 | 2026-09-14 | 迁移/导入/统计命令固化为脚本：新增 `ops/migrate.sh`（schema 迁移，容器运行中拒绝执行）、`ops/import-data.sh`（§2.7 第 3–5 步 validate → import → status 一体化，validate 不过零写入中止）、`ops/status.sh`（只读脱敏统计，运行/停止均可执行）；`ops/reset-db.sh` 与 `ops/restore-db.sh` 内联的 migrate/status 调用改为复用上述脚本；`migrations/0001_init.sql` 全部 CREATE 语句加 `IF NOT EXISTS`（SQL 层幂等，与 user_version 框架门控双保险）；§2.6/§2.7/§5/§6.3 同步，§6.3 清库重导顺序修正为「停服 → 清库 → 导入 → 起服」 |
 | v2.3 | 2026-09-13 | 发布流程改为「开发机构建镜像压缩包 + 正式机 load」（正式机无法直达 Go 模块源/镜像源）：新增 `ops/build-image.sh`（开发机构建 + `docker save` 打包到 `dist/`）与 `ops/load-image.sh`（正式机体检/解压/load）；新增 `ops/stop-app.sh`、`ops/start-app.sh` 独立停起服脚本；`ops/reset-db.sh` 与 `ops/restore-db.sh` 改为**仅操作数据库**（不停起服，容器运行中直接拒绝执行，回滚也不自动起服）；§2.5/§2.8/§5/§6.2/§6.3/§7 同步 |
 | v2.2 | 2026-09-12 | 修正 §2.3 目录权限缺陷：`/data/wedding` 顶层与 `import` 由 `0700` 改 `0755`（root 属主不变）——容器 65534 需穿越顶层并读取 import 内 CSV，原写法导致 validate/import/serve 全链路 permission denied（上机实测）；`nginx` 明确 root:root `0700` 不进容器；§2.7 上传文件明确 `0644`；与 `ops/deploy-app.sh` 同步 |
 | v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置，清库前自动备份）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§6 扩展为「备份与数据维护」，§7 应用异常回滚改走脚本 |

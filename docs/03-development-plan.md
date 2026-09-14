@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift 开发任务拆分与交付计划
 文档类型: 开发计划 / 工作分解结构
-版本: v1.5
-日期: 2026-09-12
+版本: v1.7
+日期: 2026-09-14
 状态: 设计已按最新规则收敛，待完成 M0 后开始开发
 依赖文档: docs/00-project-brief.md, docs/01-product-architecture.md, docs/02-technical-architecture.md, staging-machine-brief.md
 -->
@@ -254,7 +254,7 @@ flowchart LR
 #### WG-601 完成核心自动化回归
 
 - **内容**：单元、数据校验、repository、绑定一致性、HTTP 和 E2E 测试。
-- **交付物**：一条命令可运行的测试集合。
+- **交付物**：可一次跑完的测试集合（`go test -race ./...`，配套 `gofmt -l .` / `go vet ./...`；命令见 README「M6 质量收口与正式开放」）。
 - **完成标准**：核心业务分支全覆盖；不依赖真实数据或测试顺序。
 
 #### WG-602 完成安全与共享边界核对
@@ -474,6 +474,7 @@ M2 后保留同一 `/wedding/` 入口，但占位页不得暴露未完成 API �
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.7 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：WG-601 交付物由「一条命令入口」改为显式命令组合（`go test -race ./...` 等，见 README）；发布验证与 canary 冒烟改由 `docs/06-m6-runbook.md` §4 的人工核对清单覆盖 |
 | v1.6 | 2026-09-13 | 绑定约束放宽：一个同行组改为可绑定多个密钥（原一对一约束在 WG-403/门禁描述中已成历史）；「密钥已绑定其他同行组」改为明确提示；风险表与完成定义同步 |
 | v1.5 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
 | v1.4 | 2026-09-11 | 备份改为独立 `/etc/cron.d/wedding` 每小时 `:44` 触发、保留 72 份（WG-305/WG-603/测试矩阵/完成定义同步）；WG-102 增加 `healthz-check` 子命令；目录收束到 `/opt/wedding` 与 `/data/wedding` |

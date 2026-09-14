@@ -99,14 +99,11 @@ fi
 
 echo "--- 3/4 删除数据库文件并重建 schema ---"
 rm -f "${DB_FILE}" "${DB_FILE}-wal" "${DB_FILE}-shm"
-$DC -p "${PROJECT}" -f "${COMPOSE_FILE}" run --rm -T app migrate
+"${REPO_ROOT}/ops/migrate.sh"
 
 echo "清库完成：当前为空库 + 最新 schema，无任何业务数据。服务仍处于停止状态。"
 
 echo ""
-echo "下一步："
-echo "  ops/start-app.sh        # 起服（空库登录必然失败属预期）"
-echo "  # 重新导入，详见 docs/06-m6-runbook.md §2.7："
-echo "  docker compose -p wedding -f deploy/compose.yaml run --rm -T app data validate --dir /data/wedding/import"
-echo "  docker compose -p wedding -f deploy/compose.yaml run --rm -T app data import --dir /data/wedding/import"
-echo "  docker compose -p wedding -f deploy/compose.yaml run --rm -T app status"
+echo "下一步（先导入再起服；不导入直接起服则空库登录必然失败属预期）："
+echo "  ops/import-data.sh      # 重新导入（validate → import → status，详见 docs/06-m6-runbook.md §2.7）"
+echo "  ops/start-app.sh        # 起服"

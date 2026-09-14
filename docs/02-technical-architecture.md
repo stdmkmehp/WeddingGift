@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v2.2
-日期: 2026-09-12
+版本: v2.4
+日期: 2026-09-14
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
 产品设计: docs/01-product-architecture.md
@@ -719,6 +719,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.4 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：§16 各层测试改用显式命令（`go test -race ./...` 等，见 README），前端危险 API / 外部资源 / 持久存储与秘密按代码约定人工 + CR 把关；发布验证与 canary 冒烟改由 `docs/06-m6-runbook.md` §4 的人工核对清单覆盖；`docs/05-m2-runbook.md` §2/§4 与 `docs/06-m6-security-review.md` 同步 |
 | v2.3 | 2026-09-13 | 绑定约束放宽：0001 schema 直接移除 `access_key.group_id` 唯一约束（测试阶段直接重置数据库，不做版本兼容），ADR-006 同步修订；「密钥已绑定其他同行组」从统一模糊失败改为明确提示可联系新郎处理；登录页文案与页签标题调整 |
 | v2.2 | 2026-09-12 | §13.1 目录权限修正：`/data/wedding` 顶层与 `import` 为 root:root `0755`（原 `0700` 阻止容器 65534 穿越，上机 `data validate` 实测 permission denied），`nginx` 明确 root:root `0700` 不挂载进容器；与 `ops/deploy-app.sh` 同步 |
 | v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§17.3 回滚改走脚本 |

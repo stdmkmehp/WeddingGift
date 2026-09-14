@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift M2 真实 URL 访问链路操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v1.5
-日期: 2026-09-12
+版本: v1.6
+日期: 2026-09-14
 状态: M2 已执行并验收通过（G2 门禁通过），里程碑关闭
 依赖文档: docs/03-development-plan.md（M2/WG-201~203）, docs/staging-machine-brief.md（§3/§5/§6/§8）, docs/02-technical-architecture.md（§12）
 -->
@@ -32,11 +32,7 @@
 
 ## 2. WG-201 只读自检
 
-```sh
-ops/staging-selfcheck.sh
-```
-
-全部为只读命令，结果自动保存到 `ops/records/selfcheck-<UTC时间戳>.log`（不进 Git）。逐项核对：
+> `ops/staging-selfcheck.sh` 已于 2026-09-14 移除（M2 早已验收通过）。现按 `docs/06-m6-runbook.md` §2.2 列出的只读命令人工核对，需留存输出时自行 `tee`（不再产出 `ops/records/` 日志）。核对项与通过标准不变：
 
 | 核对项 | 通过标准 |
 |---|---|
@@ -90,8 +86,8 @@ docker exec costra-nginx nginx -t && docker exec costra-nginx nginx -s reload
 # 4. 自留副本：把改后完整文件存一份到自有目录
 cp -p /data/conf/nginx/costra.cloud.conf "/data/wedding/nginx/costra.cloud.conf.$(date -u +%Y%m%d-%H%M%S).after"
 
-# 5. 真实 URL + Costra 回归验证
-ops/verify-public.sh
+# 5. 真实 URL + Costra 回归验证（原 ops/verify-public.sh 已移除，
+#    按 docs/06-m6-runbook.md §4.1 的核对项人工执行）
 ```
 
 若 `nginx -t` 失败：**不要 reload**，立即用第 1 步的备份恢复并重新校验：
@@ -101,17 +97,17 @@ cp -p <备份文件> /data/conf/nginx/costra.cloud.conf
 docker exec costra-nginx nginx -t
 ```
 
-`verify-public.sh` 覆盖：主页 200 且为链路验证页、`/wedding` 301、相对静态资源 200、`/wedding/healthz` ok、页面无根路径绝对引用、Costra `/healthz` 与兜底 404 回归、staging 本机容器与资源回归。在任意能访问公网的机器都可再跑一遍复核。
+验证覆盖（现按 `docs/06-m6-runbook.md` §4.1 执行）：主页 200 且为真实单页应用、`/wedding` 301、相对静态资源 200、`/wedding/healthz` ok、页面无根路径绝对引用、Costra `/healthz` 与兜底 404 回归、本机容器与资源回归。在任意能访问公网的机器都可再跑一遍复核。
 
 ## 5. 执行记录（回填）
 
 > 执行后回填本节，作为 G2 门禁与后续审计依据。
 
 - 执行人 / 执行时间（UTC）：
-- 自检记录文件：`ops/records/selfcheck-________.log`
+- 自检结论：达标 / 不达标（按 `docs/06-m6-runbook.md` §2.2 逐项核对）
 - 镜像/版本：`version=______ commit=______`
 - nginx 备份：`/data/wedding/nginx/costra.cloud.conf.________.bak`
-- `verify-public.sh` 结果：____ 通过 / ____ 失败
+- 真实 URL 核对（`docs/06-m6-runbook.md` §4.1）结果：____ 通过 / ____ 失败
 - 资源占用峰值（docker stats 摘要）：
 - Costra 回归结论：
 - 异常与处理：
@@ -151,4 +147,5 @@ nginx 相关回滚同样**人工执行**，两种方法任选（对应说明书 
 | v1.2 | 2026-09-12 | 修正 WG-202 目录属主描述：`secrets` 属主同为容器用户 65534（root:root 0700 目录会阻止容器内非 root 进程读取 `app.key`），与 `ops/deploy-app.sh` 修复同步 |
 | v1.3 | 2026-09-12 | M2 验收通过：G2 门禁核对全部勾选，里程碑关闭，进入 M3 |
 | v1.4 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
+| v1.6 | 2026-09-14 | `ops/staging-selfcheck.sh` 与 `ops/verify-public.sh` 已移除：§2 自检与 §4 第 5 步改为按 `docs/06-m6-runbook.md` §2.2 / §4.1 的只读命令人工核对；§5 执行记录同步（不再有 `ops/records/` 自检日志）。M2 已验收，本手册仅作里程碑记录 |
 | v1.5 | 2026-09-12 | 修正 WG-202 目录权限描述：`/data/wedding` 顶层与 `import` 为 root:root `0755`（原"全部 0700"阻止容器 65534 穿越，M6 上机 validate 实测 permission denied），`nginx` 为 root:root `0700` 不进容器；与 `ops/deploy-app.sh`、`06-m6-runbook` §2.3 同步 |
