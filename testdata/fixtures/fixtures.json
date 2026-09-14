@@ -2,12 +2,12 @@
   "_comment": "WeddingGift M0 虚构数据包 - 仅测试用，无真实数据。字段定义见 docs/04-m0-decisions.md 第 2 节。",
   "gift_types": [
     {
-      "type_key": "travel_annual_card",
-      "title": "旅游年卡",
+      "type_key": "travel_csj_first",
+      "title": "长三角旅游年卡",
       "subtitle": "畅游一整年",
-      "default_instructions": "凭激活码在合作平台兑换，一年内不限次。",
+      "default_instructions": "凭本年卡可在小程序指定景点免票游玩（虚构说明）。",
       "default_validity_text": "自激活起 12 个月内有效",
-      "default_redemption_url": "https://example.com/redeem/travel",
+      "default_redemption_url": "#小程序://示例旅游年卡/FAKETRAVEL000",
       "theme_variant": "travel"
     },
     {
@@ -80,7 +80,7 @@
         }
       ],
       "gift_items": [
-        { "external_ref": "GI002", "type_key": "travel_annual_card", "code_plaintext": "FAKETRAVEL002", "ordinal": 1, "status": "active" },
+        { "external_ref": "GI002", "type_key": "travel_csj_first", "code_plaintext": "FAKETRAVEL002", "ordinal": 1, "status": "active" },
         { "external_ref": "GI003", "type_key": "movie_voucher", "code_plaintext": "FAKEMOVIE003", "ordinal": 2, "status": "active" },
         {
           "external_ref": "GI004",
@@ -127,7 +127,7 @@
         }
       ],
       "gift_items": [
-        { "external_ref": "GI005", "type_key": "travel_annual_card", "code_plaintext": "FAKETRAVEL005", "ordinal": 1, "status": "active" },
+        { "external_ref": "GI005", "type_key": "travel_csj_first", "code_plaintext": "FAKETRAVEL005", "ordinal": 1, "status": "active" },
         { "external_ref": "GI006", "type_key": "movie_voucher", "code_plaintext": "FAKEMOVIE006", "ordinal": 2, "status": "active" }
       ]
     }

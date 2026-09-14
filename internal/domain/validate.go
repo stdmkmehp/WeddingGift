@@ -69,14 +69,25 @@ func (v *validator) checkFieldLen(file string, row int, name, value string, max 
 	}
 }
 
-// checkHTTPSURL 校验可选链接字段：非空时必须是合法 HTTPS URL。
-func (v *validator) checkHTTPSURL(file string, row int, name, raw string) {
+// checkRedemptionURL 校验可选兑换入口字段：非空时必须是合法 HTTPS URL
+// 或微信小程序口令（#小程序://名称/路径，契约 §2.5 修订）。
+func (v *validator) checkRedemptionURL(file string, row int, name, raw string) {
 	if raw == "" {
+		return
+	}
+	if strings.HasPrefix(raw, MiniProgramLinkPrefix) {
+		rest := strings.TrimPrefix(raw, MiniProgramLinkPrefix)
+		appName, path, ok := strings.Cut(rest, "/")
+		if !ok || strings.TrimSpace(appName) == "" || strings.TrimSpace(path) == "" {
+			v.add(file, row, "%s 小程序口令格式非法（应为 %s名称/路径）", name, MiniProgramLinkPrefix)
+			return
+		}
+		v.checkFieldLen(file, row, name, raw, MaxURLLen)
 		return
 	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host == "" {
-		v.add(file, row, "%s 必须是 HTTPS 链接", name)
+		v.add(file, row, "%s 必须是 HTTPS 链接或小程序口令（%s名称/路径）", name, MiniProgramLinkPrefix)
 		return
 	}
 	v.checkFieldLen(file, row, name, raw, MaxURLLen)
@@ -238,19 +249,11 @@ func (v *validator) checkGiftTypes() {
 		v.checkFieldLen(FileGiftTypes, row, "default_instructions", gt.DefaultInstructions, MaxInstructionsLen)
 		v.checkFieldLen(FileGiftTypes, row, "default_validity_text", gt.DefaultValidityText, MaxValidityTextLen)
 		v.checkFieldLen(FileGiftTypes, row, "theme_variant", gt.ThemeVariant, MaxThemeVariantLen)
-		v.checkHTTPSURL(FileGiftTypes, row, "default_redemption_url", gt.DefaultRedemptionURL)
+		v.checkRedemptionURL(FileGiftTypes, row, "default_redemption_url", gt.DefaultRedemptionURL)
 	}
 
-	// 首批内置三类必须存在（契约 §2.5 与 D-13）。
-	present := make(map[string]bool, len(v.ds.GiftTypes))
-	for _, gt := range v.ds.GiftTypes {
-		present[gt.TypeKey] = true
-	}
-	for _, key := range BuiltinGiftTypes {
-		if !present[key] {
-			v.add(FileGiftTypes, 0, "缺少首批内置礼品类型 %q", key)
-		}
-	}
+	// 礼品类型完全由数据文件驱动（D-13 修订）：无内置必备清单，
+	// 新增或细化类型只需改数据文件，不修改鉴权与校验逻辑。
 }
 
 func (v *validator) checkGiftItems() {
@@ -312,7 +315,7 @@ func (v *validator) checkGiftItems() {
 		}
 		v.checkFieldLen(FileGiftItems, row, "instructions_override", gi.InstructionsOverride, MaxInstructionsLen)
 		v.checkFieldLen(FileGiftItems, row, "validity_text_override", gi.ValidityTextOverride, MaxValidityTextLen)
-		v.checkHTTPSURL(FileGiftItems, row, "redemption_url_override", gi.RedemptionURLOverride)
+		v.checkRedemptionURL(FileGiftItems, row, "redemption_url_override", gi.RedemptionURLOverride)
 		if gi.Status == StatusActive {
 			activeGiftCount[gi.GroupExternalRef]++
 		}

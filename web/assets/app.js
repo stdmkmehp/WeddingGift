@@ -264,7 +264,9 @@ function buildGiftCard(gift) {
         validity.textContent = gift.validityText;
         meta.appendChild(validity);
     }
-    // 兑换入口只渲染 https 链接（契约已保证，前端再兜底一次）。
+    // 兑换入口按契约仅两种形态（契约已保证，前端再兜底一次）：
+    // HTTPS 链接渲染为可点链接；小程序口令（#小程序://…）不是可点 URL，
+    // 渲染为复制按钮，引导用户粘贴到微信聊天后点击打开。
     if (typeof gift.redemptionUrl === "string" && gift.redemptionUrl.startsWith("https://")) {
         const link = document.createElement("a");
         link.href = gift.redemptionUrl;
@@ -272,6 +274,32 @@ function buildGiftCard(gift) {
         link.rel = "noopener noreferrer";
         link.textContent = "前往官方兑换";
         meta.appendChild(link);
+    } else if (typeof gift.redemptionUrl === "string" && gift.redemptionUrl.startsWith("#小程序://")) {
+        const mpBtn = document.createElement("button");
+        mpBtn.type = "button";
+        mpBtn.className = "btn btn-secondary";
+        mpBtn.textContent = "复制小程序兑换口令";
+        const mpFeedback = document.createElement("p");
+        mpFeedback.className = "copy-feedback";
+        mpFeedback.hidden = true;
+        mpBtn.addEventListener("click", async () => {
+            mpFeedback.hidden = true;
+            // 剪贴板 API 可用（需安全上下文）时直接复制；否则选中口令原文供长按。
+            if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(gift.redemptionUrl);
+                    mpFeedback.textContent = "已复制口令，粘贴到微信任意聊天发送后，点击即可打开小程序";
+                    mpFeedback.hidden = false;
+                    return;
+                } catch {
+                    // 落入降级分支（微信 WebView 等无权限场景）。
+                }
+            }
+            mpFeedback.textContent = gift.redemptionUrl;
+            mpFeedback.hidden = false;
+            selectCodeText(mpFeedback);
+        });
+        meta.append(mpBtn, mpFeedback);
     }
     card.appendChild(meta);
 

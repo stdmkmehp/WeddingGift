@@ -28,13 +28,13 @@ func validDataset() *Dataset {
 			{MemberExternalRef: "M003", Value: "李娜", Kind: LoginNameRealName},
 		},
 		GiftTypes: []GiftTypeImport{
-			{TypeKey: "travel_annual_card", Title: "旅游年卡", DefaultInstructions: "凭码兑换", DefaultRedemptionURL: "https://example.com/travel"},
+			{TypeKey: "travel_csj_first", Title: "长三角旅游年卡", DefaultInstructions: "凭码兑换", DefaultRedemptionURL: "#小程序://示例旅游年卡/FAKETRAVEL000"},
 			{TypeKey: "movie_voucher", Title: "电影券", DefaultInstructions: "凭码兑换"},
 			{TypeKey: "coffee_voucher", Title: "咖啡券", DefaultInstructions: "凭码兑换"},
 		},
 		GiftItems: []GiftItemImport{
 			{ExternalRef: "GI001", GroupExternalRef: "G001", TypeKey: "coffee_voucher", CodePlaintext: "CODE001", Ordinal: 1, Status: StatusActive},
-			{ExternalRef: "GI002", GroupExternalRef: "G002", TypeKey: "travel_annual_card", CodePlaintext: "CODE002", Ordinal: 1, Status: StatusActive},
+			{ExternalRef: "GI002", GroupExternalRef: "G002", TypeKey: "travel_csj_first", CodePlaintext: "CODE002", Ordinal: 1, Status: StatusActive},
 			{ExternalRef: "GI003", GroupExternalRef: "G002", TypeKey: "movie_voucher", CodePlaintext: "CODE003", Ordinal: 2, Status: StatusActive,
 				RedemptionURLOverride: "https://example.com/movie-special"},
 		},
@@ -121,10 +121,12 @@ func TestValidateViolations(t *testing.T) {
 		{"实例覆盖链接非 HTTPS", func(ds *Dataset) {
 			ds.GiftItems[2].RedemptionURLOverride = "javascript:alert(1)"
 		}, "HTTPS"},
-		{"缺内置礼品类型", func(ds *Dataset) {
-			ds.GiftTypes = ds.GiftTypes[:2] // 移除 coffee_voucher，但 GI001 仍引用它
-			ds.GiftItems[0].TypeKey = "movie_voucher"
-		}, "内置"},
+		{"小程序口令缺路径", func(ds *Dataset) {
+			ds.GiftTypes[0].DefaultRedemptionURL = "#小程序://仅名称无路径"
+		}, "小程序口令"},
+		{"小程序口令名称为空", func(ds *Dataset) {
+			ds.GiftItems[2].RedemptionURLOverride = "#小程序:///SomePath"
+		}, "小程序口令"},
 		{"组 status 非法", func(ds *Dataset) {
 			ds.Groups[0].Status = "archived"
 		}, "status"},

@@ -48,7 +48,7 @@ func TestDatasetReport(t *testing.T) {
 
 	for _, want := range []string{
 		"同行组: 3", "成员: 6", "登录名称: 9", "礼品实例: 6", "卡片密钥: 3",
-		"travel_annual_card=2", "movie_voucher=2", "coffee_voucher=2",
+		"travel_csj_first=2", "movie_voucher=2", "coffee_voucher=2",
 		"G002=3",
 	} {
 		if !strings.Contains(report, want) {

@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift M0 需求与数据契约冻结
 文档类型: 决策记录 / 数据契约 / 文案字段
-版本: v1.1
-日期: 2026-09-12
+版本: v1.2
+日期: 2026-09-14
 状态: M0 冻结，作为 M1 及后续开发的字段与规则事实源
 依赖文档: docs/00-project-brief.md, docs/01-product-architecture.md, docs/02-technical-architecture.md, docs/03-development-plan.md, staging-machine-brief.md
 -->
@@ -37,7 +37,7 @@
 | D-10 | 已知误绑风险 | 接受"首次输入他人姓名可能误绑"的低概率风险；不做身份证明、预绑定或自动纠错。误绑由所有者停服后人工修正。 |
 | D-11 | 同行组统一建模 | 单身/夫妻/夫妻带娃统一为"同行组 + 成员"，运行时不写家庭形态分支逻辑；成员可配置是否可登录。 |
 | D-12 | 多礼品 | 一个同行组可配置一到多份礼品；同一密钥登录后展示该组全部礼品，按 `ordinal` 排序。 |
-| D-13 | 首批礼品类型 | 旅游年卡（`travel_annual_card`）、电影券（`movie_voucher`）、咖啡券（`coffee_voucher`）。类型由配置驱动，新增类型不改鉴权逻辑。 |
+| D-13 | 礼品类型 | 首批为旅游年卡（长三角/京津冀/广东，各含主人与同行变体）、电影券（`movie_voucher`）、咖啡券（`coffee_voucher`）。类型完全由数据文件驱动，无内置必备清单，新增或细化类型不改鉴权与校验逻辑。兑换入口支持 HTTPS URL 与微信小程序口令（`#小程序://名称/路径`）两种形态。 |
 | D-14 | 礼品类型默认与覆盖 | 礼品类型提供默认兑换说明/有效期/链接；礼品实例可逐字段覆盖。 |
 | D-15 | 礼品码存储 | 激活码使用 AEAD（AES-256-GCM）加密，每条独立随机 nonce；明文不入库、不进日志、不进 URL。 |
 | D-16 | 会话 | 服务端随机令牌（≥256 bit），库存 SHA-256 摘要；Cookie `wedding_session`，Secure/HttpOnly/SameSite=Lax，Path 由 nginx 收编到 `/wedding/`。 |
@@ -94,15 +94,15 @@
 
 | 字段 | 类型 | 必填 | 约束 / 说明 |
 |---|---|---|---|
-| type_key | text | 是 | 主键，如 `travel_annual_card` |
+| type_key | text | 是 | 主键，如 `travel_csj_first` |
 | title | text | 是 | 展示标题，如"旅游年卡" |
 | subtitle | text | 否 | 副标题 |
 | default_instructions | text | 是 | 默认兑换说明 |
 | default_validity_text | text | 否 | 默认有效期文案 |
-| default_redemption_url | text | 否 | 默认兑换链接，必须 HTTPS |
+| default_redemption_url | text | 否 | 默认兑换入口，必须为 HTTPS URL 或微信小程序口令（`#小程序://名称/路径`） |
 | theme_variant | text | 否 | 视觉变体标识 |
 
-首批内置三类：`travel_annual_card`、`movie_voucher`、`coffee_voucher`。
+首批类型见 §3.2；礼品类型完全由数据文件驱动，导入校验不强制任何必备 type_key。
 
 ### 2.6 礼品实例 gift_item
 
@@ -114,7 +114,7 @@
 | code_plaintext | text | 是 | 激活码明文（仅导入文件，落库转 AEAD 密文；不进 Git 真实数据） |
 | instructions_override | text | 否 | 覆盖类型默认兑换说明 |
 | validity_text_override | text | 否 | 覆盖默认有效期 |
-| redemption_url_override | text | 否 | 覆盖默认链接，必须 HTTPS |
+| redemption_url_override | text | 否 | 覆盖默认兑换入口，必须为 HTTPS URL 或小程序口令 |
 | ordinal | integer | 是 | 组内礼品展示顺序，从 1 起 |
 | status | text | 是 | `active` / `disabled` |
 
@@ -169,9 +169,13 @@
 
 | type_key | title 占位 | default_instructions 占位 |
 |---|---|---|
-| travel_annual_card | 旅游年卡 | 「凭激活码在合作平台兑换，一年内不限次。」 |
-| movie_voucher | 电影券 | 「凭激活码在合作影城 App 兑换观影券。」 |
-| coffee_voucher | 咖啡券 | 「凭激活码在合作门店小程序兑换饮品。」 |
+| travel_csj_first / travel_csj_second | 长三角旅游年卡 | 「凭本旅游年卡可在小程序指定景点免票游玩，请于 2026-12-31 前在小程序内完成激活」 |
+| travel_jjj_first / travel_jjj_second | 京津冀旅游年卡 | 「凭本旅游年卡可在小程序指定景点免票游玩，请于 2026-12-31 前完成年票绑定」 |
+| travel_gd_first / travel_gd_second | 广东旅游年卡 | 「凭本旅游年卡可在小程序指定景点免票游玩，请于 2026-10-30 前开通年卡」 |
+| movie_voucher | 电影券 | 「凭卡号密码在中影电影通小程序完成绑卡」 |
+| coffee_voucher | 咖啡券 | 「凭卡号密码在星巴克小程序内完成绑卡」 |
+
+真实文案以 `gift_types.csv` 实际配置为准。
 
 ### 3.3 占位内容使用约束
 
@@ -191,5 +195,6 @@
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v1.2 | 2026-09-14 | D-13 修订：旅游年卡细化为长三角/京津冀/广东各含同行变体（`travel_annual_card` 退役）；礼品类型改为完全数据文件驱动，取消首批内置必备清单硬校验；兑换入口（`default_redemption_url` / `redemption_url_override`）由仅 HTTPS 放宽为 HTTPS URL 或微信小程序口令（`#小程序://名称/路径`），前端将口令渲染为复制引导而非可点链接；§3.2 占位表同步真实首批配置 |
 | v1.1 | 2026-09-12 | D-19 目录收束的仓库根由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置） |
 | v1.0 | 2026-09-11 | 完成 M0（WG-001～003）冻结：业务决策、六类数据契约、文案字段与占位内容 |

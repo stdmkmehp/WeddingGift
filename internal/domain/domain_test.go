@@ -43,7 +43,7 @@ func TestIsValidAccessKeyCode(t *testing.T) {
 }
 
 func TestIsValidGiftTypeKey(t *testing.T) {
-	valid := []string{"travel_annual_card", "movie_voucher", "coffee_voucher", "a", "a1"}
+	valid := []string{"travel_csj_first", "movie_voucher", "coffee_voucher", "a", "a1"}
 	for _, s := range valid {
 		if !IsValidGiftTypeKey(s) {
 			t.Errorf("IsValidGiftTypeKey(%q) = false, want true", s)

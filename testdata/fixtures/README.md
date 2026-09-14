@@ -9,7 +9,7 @@
 | `recipient_groups.csv` | 同行组 |
 | `members.csv` | 成员 |
 | `member_login_names.csv` | 登录名称（本名 + 昵称） |
-| `gift_types.csv` | 礼品类型（首批三类） |
+| `gift_types.csv` | 礼品类型（数据文件驱动，无内置必备清单） |
 | `gift_items.csv` | 礼品实例（含明文激活码，仅虚构） |
 | `access_keys.csv` | 卡片密钥（含 8 位明文，仅虚构） |
 | `fixtures.json` | 上述数据的 JSON 汇总（等价内容，便于程序装载） |
@@ -24,7 +24,7 @@
 | 夫妻 | G002（张伟 & 李娜，2 名可登录） |
 | 夫妻带娃 | G003（陈强 & 刘洋 + 儿童陈小满 can_login=false） |
 | 一个成员多昵称 | 张伟（阿伟、伟哥），王芳（芳芳、小芳） |
-| 三个礼品类型 | travel_annual_card / movie_voucher / coffee_voucher 均出现 |
+| 三个礼品类型 | travel_csj_first / movie_voucher / coffee_voucher 均出现，覆盖小程序口令与 HTTPS 两类兑换入口 |
 | 一个组多份礼品 | G002 拥有 3 份礼品，含 ordinal 排序 |
 | 实例级覆盖 | GI004 覆盖默认兑换说明/有效期/链接 |
 | 卡片密钥 | K001~K003 三张卡片，8 位唯一数字，导入不预绑定；一个同行组可先后绑定其中多张 |

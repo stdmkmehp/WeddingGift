@@ -33,8 +33,10 @@ func IsValidLoginNameKind(s string) bool {
 	return s == LoginNameRealName || s == LoginNameNickname
 }
 
-// 首批内置礼品类型（D-13）。新增类型只需在数据文件中扩展，不修改鉴权逻辑。
-var BuiltinGiftTypes = []string{"travel_annual_card", "movie_voucher", "coffee_voucher"}
+// MiniProgramLinkPrefix 是微信小程序口令兑换入口的前缀（D-13 修订）：
+// 形如「#小程序://中影电影通/XMjgAr06fK3fSzj」，由微信"复制链接"产生，
+// 不是可点击 URL，网页端只能复制后引导用户粘贴到微信聊天打开。
+const MiniProgramLinkPrefix = "#小程序://"
 
 // accessKeyPattern 是卡片密钥的严格格式：8 位 ASCII 数字（D-05）。
 // 不忽略空格、连字符、字母或全角数字。
@@ -45,7 +47,7 @@ func IsValidAccessKeyCode(raw string) bool {
 	return accessKeyPattern.MatchString(raw)
 }
 
-// giftTypeKeyPattern 约束礼品类型编号形态，如 travel_annual_card。
+// giftTypeKeyPattern 约束礼品类型编号形态，如 travel_csj_first。
 var giftTypeKeyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 
 // IsValidGiftTypeKey 报告礼品类型编号是否合法。

@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 正式环境部署操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v2.5
+版本: v2.6
 日期: 2026-09-14
 状态: 待上机执行（WG-601/602 本地部分已完成）
 依赖文档: docs/03-development-plan.md（M6/WG-603~604）, docs/06-m6-security-review.md, docs/staging-machine-brief.md, docs/04-m0-decisions.md（§2 数据契约）
@@ -250,7 +250,7 @@ KC03,20269003,active,
 
 # gift_items.csv 追加（激活码为虚构值）
 GIC01,CANARY1,coffee_voucher,CANARYCOFFEE901,,,,1,active
-GIC02,CANARY2,travel_annual_card,CANARYTRAVEL902,,,,1,active
+GIC02,CANARY2,travel_csj_first,CANARYTRAVEL902,,,,1,active
 GIC03,CANARY2,movie_voucher,CANARYMOVIE903,,,,2,active
 ```
 
@@ -262,7 +262,7 @@ GIC03,CANARY2,movie_voucher,CANARYMOVIE903,,,,2,active
 - [ ] 每成员只属一组，每组至少一名可登录成员；每组至少一份礼品、顺序正确；
 - [ ] 密钥严格 8 位 ASCII 数字、全局唯一、未被表格破坏前导零；
 - [ ] 三类礼品数量与采购数量一致；激活码未被转成科学计数法/日期；
-- [ ] 兑换链接全部 HTTPS；canary 模板已并入且密钥为 2026900x 虚构号段。
+- [ ] 兑换入口全部为 HTTPS 链接或小程序口令（`#小程序://名称/路径`）；canary 模板已并入且密钥为 2026900x 虚构号段。
 
 ## 4. 验证
 
@@ -486,6 +486,7 @@ ops/start-app.sh         # 完成后起服
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.6 | 2026-09-14 | 礼品类型契约修订同步（`docs/04-m0-decisions.md` v1.2）：§3.3 canary 模板中 `travel_annual_card` 改为 `travel_csj_first`；§3.3 核对清单「兑换链接全部 HTTPS」改为「兑换入口为 HTTPS 链接或小程序口令」 |
 | v2.5 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：本地回归改为 README 中列出的显式命令（前端危险 API / 外部资源 / 持久存储与秘密按约定人工 + CR 把关）；§1 前置条件同步；§2.2 自检改为列明只读命令人工核对（不再产出 `ops/records/` 日志）；§4.1 改为 8 组真实 URL 核对命令、§4.2 改为 8 步 canary curl 序列；§3.3/§4.4/§5/§7/§8/§9 同步移除脚本引用 |
 | v2.4 | 2026-09-14 | 迁移/导入/统计命令固化为脚本：新增 `ops/migrate.sh`（schema 迁移，容器运行中拒绝执行）、`ops/import-data.sh`（§2.7 第 3–5 步 validate → import → status 一体化，validate 不过零写入中止）、`ops/status.sh`（只读脱敏统计，运行/停止均可执行）；`ops/reset-db.sh` 与 `ops/restore-db.sh` 内联的 migrate/status 调用改为复用上述脚本；`migrations/0001_init.sql` 全部 CREATE 语句加 `IF NOT EXISTS`（SQL 层幂等，与 user_version 框架门控双保险）；§2.6/§2.7/§5/§6.3 同步，§6.3 清库重导顺序修正为「停服 → 清库 → 导入 → 起服」 |
 | v2.3 | 2026-09-13 | 发布流程改为「开发机构建镜像压缩包 + 正式机 load」（正式机无法直达 Go 模块源/镜像源）：新增 `ops/build-image.sh`（开发机构建 + `docker save` 打包到 `dist/`）与 `ops/load-image.sh`（正式机体检/解压/load）；新增 `ops/stop-app.sh`、`ops/start-app.sh` 独立停起服脚本；`ops/reset-db.sh` 与 `ops/restore-db.sh` 改为**仅操作数据库**（不停起服，容器运行中直接拒绝执行，回滚也不自动起服）；§2.5/§2.8/§5/§6.2/§6.3/§7 同步 |

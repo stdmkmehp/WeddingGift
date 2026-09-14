@@ -306,7 +306,7 @@ func TestGiftSummariesForGroup(t *testing.T) {
 	if len(gifts) != 3 {
 		t.Fatalf("G002 应有 3 份礼品，实际 %d", len(gifts))
 	}
-	wantTitles := []string{"旅游年卡", "电影券", "咖啡券"}
+	wantTitles := []string{"长三角旅游年卡", "电影券", "咖啡券"}
 	for i, g := range gifts {
 		if g.Title != wantTitles[i] {
 			t.Errorf("第 %d 份礼品标题 = %q, want %q", i, g.Title, wantTitles[i])
@@ -322,8 +322,8 @@ func TestGiftSummariesForGroup(t *testing.T) {
 		!strings.Contains(g3.RedemptionURL, "coffee-special") {
 		t.Errorf("实例覆盖未生效: %+v", g3)
 	}
-	// 未覆盖的字段取类型默认。
-	if !strings.Contains(gifts[0].RedemptionURL, "redeem/travel") {
-		t.Errorf("默认链接未生效: %+v", gifts[0])
+	// 未覆盖的字段取类型默认（旅游年卡默认为小程序口令）。
+	if !strings.Contains(gifts[0].RedemptionURL, "#小程序://示例旅游年卡") {
+		t.Errorf("默认兑换入口未生效: %+v", gifts[0])
 	}
 }
