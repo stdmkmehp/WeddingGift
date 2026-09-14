@@ -26,7 +26,7 @@ function showView(name) {
     for (const [key, el] of Object.entries(views)) {
         el.hidden = key !== name;
     }
-    // 供背景层随视图切换：照片背景与坠落花瓣仅在登录态出现。
+    // 供背景层随视图切换：合照背景仅登录态出现，坠落花瓣全局飘落。
     document.body.dataset.view = name;
     // 登录后新人称呼与婚期作为落款收入感谢信正文，顶部抬头不再出现。
     $("site-header").hidden = name === "gifts";

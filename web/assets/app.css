@@ -63,7 +63,7 @@ body {
     flex-direction: column;
 }
 
-/* ---------- 婚礼背景层（帷幕 / 照片 / 四角线稿 / 花瓣） ---------- */
+/* ---------- 婚礼背景层（帷幕 / 照片 / 边缘线稿 / 喜字水印 / 花瓣） ---------- */
 
 /* 内容整体浮于背景层之上 */
 .app,
@@ -91,66 +91,93 @@ body[data-view="login"]::before {
     opacity: 0.36;
 }
 
-/* 顶部帷幕：两片 8% / 15% 灰粉酒红曲面渐变，如轻薄布料的柔和折光，全局保留 */
+/* 帷幕：左上 15% / 右上 8% 两片灰粉酒红曲面，各自由双层错位曲面叠加出轻薄布料折光，全局保留 */
 .bg-veil {
     position: fixed;
     top: 0;
-    left: 0;
-    right: 0;
     z-index: 0;
-    height: clamp(170px, 27vh, 290px);
     pointer-events: none;
+}
+
+.veil-tl {
+    left: 0;
+    width: clamp(240px, 36vw, 430px);
+}
+
+.veil-tr {
+    right: 0;
+    width: clamp(210px, 30vw, 380px);
 }
 
 .bg-veil svg {
     display: block;
     width: 100%;
-    height: 100%;
+    height: auto;
 }
 
-/* 四角线稿：低饱和细描边，分散于视口四角，不随内容滚动 */
-.corner-deco {
+/* 边缘细线稿：5 处分散于视口边缘而非堆在四角，0.25–0.35pt 质感细描边、低透明；
+   香槟金只作断续短线（.dash），不绘制完整厚边框或连续花边 */
+.edge-deco {
     position: fixed;
     z-index: 0;
-    width: clamp(52px, 13vw, 88px);
-    height: clamp(52px, 13vw, 88px);
-    opacity: 0.55;
+    width: clamp(36px, 9vw, 58px);
+    height: clamp(36px, 9vw, 58px);
+    opacity: 0.36;
     pointer-events: none;
+    color: var(--brand);
 }
 
-.corner-tl { top: var(--space-3); left: var(--space-3); color: var(--champagne); }
-.corner-tr { top: var(--space-3); right: var(--space-3); color: var(--champagne); }
-.corner-bl { bottom: var(--space-3); left: var(--space-3); color: var(--brand); }
-.corner-br { bottom: var(--space-3); right: var(--space-3); color: var(--champagne); }
+.edge-deco .dash { stroke-dasharray: 3.2 4.8; }
+.edge-deco .accent { color: var(--brand); }
 
-.corner-deco svg {
+.deco-branch-tl { top: 20vh; left: var(--space-3); color: var(--champagne); }
+.deco-glass-tr  { top: var(--space-3); right: var(--space-3); }
+.deco-heart-r   { top: 30vh; right: var(--space-3); }
+.deco-flower-l  { top: 44vh; left: var(--space-3); }
+.deco-twig-br   { bottom: 15vh; right: var(--space-4); color: var(--champagne); }
+
+.edge-deco svg {
     display: block;
     width: 100%;
     height: 100%;
 }
 
-/* 窄屏收缩下角，避免与页脚备案链接视觉拥挤 */
+/* 极淡单字「喜」水印：左侧中下，小尺寸、低透明，不使用居中大红囍字 */
+.xi-mark {
+    position: fixed;
+    left: var(--space-4);
+    top: 62vh;
+    z-index: 0;
+    font-size: clamp(30px, 7vw, 42px);
+    font-weight: 300;
+    line-height: 1;
+    color: var(--brand);
+    opacity: 0.08;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* 窄屏收缩边缘装饰与水印，避免与正文、页脚拥挤 */
 @media (max-width: 420px) {
-    .corner-bl,
-    .corner-br {
-        width: 44px;
-        height: 44px;
-        opacity: 0.4;
+    .edge-deco {
+        width: 32px;
+        height: 32px;
+        opacity: 0.28;
+    }
+
+    .xi-mark {
+        font-size: 28px;
+        top: 66vh;
     }
 }
 
-/* 花瓣：仅登录页显示；少量、慢速、低透明 */
+/* 花瓣：全局飘落（登录页与登录后页面均有）；少量、慢速、低透明 */
 .petals {
     position: fixed;
     inset: 0;
     z-index: 0;
     overflow: hidden;
     pointer-events: none;
-    display: none;
-}
-
-body[data-view="login"] .petals {
-    display: block;
 }
 
 .petal {
