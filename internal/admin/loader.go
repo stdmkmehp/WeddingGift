@@ -93,7 +93,7 @@ func LoadDataset(dir string) (*domain.Dataset, []error) {
 		})
 
 	load(domain.FileGiftItems,
-		[]string{"external_ref", "group_external_ref", "type_key", "code_plaintext", "instructions_override", "validity_text_override", "redemption_url_override", "ordinal", "status"},
+		[]string{"external_ref", "group_external_ref", "type_key", "credential_mode", "code_plaintext", "secret_plaintext", "instructions_override", "validity_text_override", "redemption_url_override", "ordinal", "status"},
 		func(f map[string]string, line int) {
 			ordinal, err := parseInt(f["ordinal"])
 			if err != nil {
@@ -103,7 +103,9 @@ func LoadDataset(dir string) (*domain.Dataset, []error) {
 				ExternalRef:           f["external_ref"],
 				GroupExternalRef:      f["group_external_ref"],
 				TypeKey:               f["type_key"],
+				CredentialMode:        f["credential_mode"],
 				CodePlaintext:         f["code_plaintext"],
+				SecretPlaintext:       f["secret_plaintext"],
 				InstructionsOverride:  f["instructions_override"],
 				ValidityTextOverride:  f["validity_text_override"],
 				RedemptionURLOverride: f["redemption_url_override"],

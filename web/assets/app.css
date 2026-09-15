@@ -751,6 +751,33 @@ body[data-view="login"]::before {
     word-break: break-all;
 }
 
+/* card_secret 模式的凭证行：标签 + 码 + 行内复制按钮；code 模式为无标签单行 */
+.gift-credential {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+}
+
+.gift-credential + .gift-credential {
+    margin-top: var(--space-2);
+}
+
+.gift-credential-label {
+    flex: 0 0 auto;
+    font-size: 14px;
+    color: var(--ink-soft);
+}
+
+/* 行内复制按钮：压低触控高度以嵌入凭证行，视觉弱化于主按钮 */
+.btn-mini {
+    min-height: 32px;
+    min-width: 0;
+    padding: var(--space-1) var(--space-3);
+    font-size: 13px;
+    flex: 0 0 auto;
+}
+
 .gift-code[data-state="revealed"] {
     user-select: all;
     -webkit-user-select: all;

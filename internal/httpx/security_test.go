@@ -202,8 +202,8 @@ func TestLogsDoNotLeakSecrets(t *testing.T) {
 		"王芳", "芳芳", "小芳", "张伟", "阿伟", "伟哥", "李娜", "陈强", "刘洋",
 		// 明文卡片密钥。
 		"20260001", "20260002", "20260003", "99999999",
-		// 明文礼品码。
-		"FAKECOFFEE001", "FAKETRAVEL002", "FAKEMOVIE003", "FAKECOFFEE004", "FAKETRAVEL005", "FAKEMOVIE006",
+		// 明文礼品凭证（激活码/卡号/密码）。
+		"FAKECOFFEE001", "FAKETRAVEL002", "FAKEMOVIE003", "FAKEPASS003", "FAKECOFFEE004", "FAKETRAVEL005", "FAKEMOVIE006",
 		// 会话令牌 / Cookie 值。
 		cookie.Value, cookie2.Value,
 	}

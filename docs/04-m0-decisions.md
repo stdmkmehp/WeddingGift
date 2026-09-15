@@ -39,7 +39,7 @@
 | D-12 | 多礼品 | 一个同行组可配置一到多份礼品；同一密钥登录后展示该组全部礼品，按 `ordinal` 排序。 |
 | D-13 | 礼品类型 | 首批为旅游年卡（长三角/京津冀/广东，各含主人与同行变体）、电影券（`movie_voucher`）、咖啡券（`coffee_voucher`）。类型完全由数据文件驱动，无内置必备清单，新增或细化类型不改鉴权与校验逻辑。兑换入口支持 HTTPS URL 与微信小程序口令（`#小程序://名称/路径`）两种形态。 |
 | D-14 | 礼品类型默认与覆盖 | 礼品类型提供默认兑换说明/有效期/链接；礼品实例可逐字段覆盖。 |
-| D-15 | 礼品码存储 | 激活码使用 AEAD（AES-256-GCM）加密，每条独立随机 nonce；明文不入库、不进日志、不进 URL。 |
+| D-15 | 礼品码存储 | 礼品凭证（激活码，或卡号+密码）使用 AEAD（AES-256-GCM）加密，每条独立随机 nonce；明文不入库、不进日志、不进 URL。凭证形态由礼品实例 `credential_mode` 决定：`code` 单一激活码 / `card_secret` 卡号+密码（D-15 修订，2026-09-15）。 |
 | D-16 | 会话 | 服务端随机令牌（≥256 bit），库存 SHA-256 摘要；Cookie `wedding_session`，Secure/HttpOnly/SameSite=Lax，Path 由 nginx 收编到 `/wedding/`。 |
 | D-17 | 备份 | 本机 cron 独立单元 `/etc/cron.d/wedding`，每小时 `:44`，SQLite online backup，保留最近 72 份，只写 `/data/wedding/backups/`。 |
 | D-18 | 异常处理边界 | 少量异常一律停服后人工检查修正，不建设自动补发、改绑、审计状态机或告警平台。 |
@@ -111,14 +111,16 @@
 | external_ref | text | 是 | 全局唯一，如 `GI001` |
 | group_external_ref | text | 是 | 引用同行组 external_ref |
 | type_key | text | 是 | 引用礼品类型 |
-| code_plaintext | text | 是 | 激活码明文（仅导入文件，落库转 AEAD 密文；不进 Git 真实数据） |
+| credential_mode | text | 是 | 凭证形态：`code` 单一激活码 / `card_secret` 卡号+密码 |
+| code_plaintext | text | 是 | 凭证明文（`code` 模式为激活码；`card_secret` 模式为卡号）。仅导入文件，落库转 AEAD 密文；不进 Git 真实数据 |
+| secret_plaintext | text | 条件 | 密码明文（仅 `card_secret` 模式必填；`code` 模式必须为空）。仅导入文件，落库转 AEAD 密文 |
 | instructions_override | text | 否 | 覆盖类型默认兑换说明 |
 | validity_text_override | text | 否 | 覆盖默认有效期 |
 | redemption_url_override | text | 否 | 覆盖默认兑换入口，必须为 HTTPS URL 或小程序口令 |
 | ordinal | integer | 是 | 组内礼品展示顺序，从 1 起 |
 | status | text | 是 | `active` / `disabled` |
 
-约束：每个 `active` 同行组至少一份 `active` 礼品；`type_key` 必须存在；覆盖链接与默认链接均须 HTTPS。
+约束：每个 `active` 同行组至少一份 `active` 礼品；`type_key` 必须存在；激活码/卡号（`code_plaintext`）全局唯一，密码不做唯一要求；覆盖链接与默认链接均须 HTTPS。
 
 ### 2.7 卡片密钥 access_key
 

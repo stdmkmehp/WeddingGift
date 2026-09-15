@@ -3,8 +3,8 @@
 // 纪律：
 // - 全部请求使用相对路径，兼容 /wedding/ 前缀，禁止域名根路径；
 // - 动态内容一律走 textContent，不使用 innerHTML（防数据注入）；
-// - 激活码只保存在内存中，刷新/退出/会话失效即清空；
-// - 不使用 localStorage / IndexedDB / Service Worker 保存会话与礼品码。
+// - 礼品凭证明文（激活码/卡号/密码）只保存在内存中，刷新/退出/会话失效即清空；
+// - 不使用 localStorage / IndexedDB / Service Worker 保存会话与礼品凭证。
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,7 +18,7 @@ const views = {
 // 服务文案（bootstrap 下发；bootstrap 失败时保留 HTML 中的占位默认）。
 let serviceTexts = null;
 
-// 当前会话数据（含礼品摘要）；明文激活码只存在 revealedCodes 内存表中。
+// 当前会话数据（含礼品摘要）；凭证明文只存在 revealedCodes 内存表中（gift.id -> {code, secret}）。
 let currentSession = null;
 const revealedCodes = new Map();
 
@@ -195,6 +195,7 @@ function enterGiftsView(session) {
 }
 
 // buildGiftCard 用 DOM API 构建一张礼品卡；所有数据文本走 textContent。
+// 凭证形态由 credentialMode 决定：code 为单一激活码；card_secret 为卡号+密码两行。
 function buildGiftCard(gift) {
     const card = document.createElement("li");
     card.className = "gift-card";
@@ -214,13 +215,45 @@ function buildGiftCard(gift) {
         card.appendChild(subtitle);
     }
 
+    const isCardSecret = gift.credentialMode === "card_secret";
+    const revealLabel = isCardSecret ? "显示卡号密码" : "显示激活码";
+
+    // 凭证区遮蔽态即按形态渲染骨架：card_secret 为带标签双行，各行自带复制按钮。
     const codeRow = document.createElement("div");
     codeRow.className = "gift-code-row";
-    const codeEl = document.createElement("span");
-    codeEl.className = "gift-code";
-    codeEl.dataset.state = "masked";
-    codeEl.textContent = "••••••••";
-    codeRow.appendChild(codeEl);
+    // fields: [{ key: "code"|"secret", codeEl, copyBtn(仅 card_secret 行内) }]
+    const fields = [];
+    const buildField = (key, labelText) => {
+        const row = document.createElement("div");
+        row.className = "gift-credential";
+        if (labelText) {
+            const label = document.createElement("span");
+            label.className = "gift-credential-label";
+            label.textContent = labelText;
+            row.appendChild(label);
+        }
+        const codeEl = document.createElement("span");
+        codeEl.className = "gift-code";
+        codeEl.dataset.state = "masked";
+        codeEl.textContent = "••••••••";
+        row.appendChild(codeEl);
+        const field = { key, codeEl, copyBtn: null };
+        if (isCardSecret) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn btn-secondary btn-mini";
+            btn.textContent = "复制";
+            btn.hidden = true;
+            row.appendChild(btn);
+            field.copyBtn = btn;
+        }
+        codeRow.appendChild(row);
+        fields.push(field);
+    };
+    buildField("code", isCardSecret ? "卡号" : "");
+    if (isCardSecret) {
+        buildField("secret", "密码");
+    }
     card.appendChild(codeRow);
 
     const actions = document.createElement("div");
@@ -228,7 +261,8 @@ function buildGiftCard(gift) {
     const revealBtn = document.createElement("button");
     revealBtn.type = "button";
     revealBtn.className = "btn btn-secondary";
-    revealBtn.textContent = "显示激活码";
+    revealBtn.textContent = revealLabel;
+    // 整码复制按钮仅 code 模式使用；card_secret 卡号/密码各有行内复制按钮。
     const copyBtn = document.createElement("button");
     copyBtn.type = "button";
     copyBtn.className = "btn btn-secondary";
@@ -303,19 +337,48 @@ function buildGiftCard(gift) {
     }
     card.appendChild(meta);
 
-    const setRevealed = (code) => {
-        revealedCodes.set(gift.id, code);
-        codeEl.textContent = code;
-        codeEl.dataset.state = "revealed";
+    // copyValue 统一复制入口：剪贴板 API 可用（需安全上下文）时直接复制；
+    // 否则选中目标文本，引导长按手动复制。
+    const copyValue = async (value, targetEl, okText, fallbackText) => {
+        feedback.hidden = true;
+        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+            try {
+                await navigator.clipboard.writeText(value);
+                feedback.textContent = okText;
+                feedback.hidden = false;
+                return;
+            } catch {
+                // 落入降级分支（微信 WebView 等无权限场景）。
+            }
+        }
+        selectCodeText(targetEl);
+        feedback.textContent = fallbackText;
+        feedback.hidden = false;
+    };
+
+    const setRevealed = (code, secret) => {
+        revealedCodes.set(gift.id, { code, secret });
+        for (const f of fields) {
+            f.codeEl.textContent = f.key === "secret" ? secret : code;
+            f.codeEl.dataset.state = "revealed";
+            if (f.copyBtn) {
+                f.copyBtn.hidden = false;
+            }
+        }
         revealBtn.hidden = true;
-        copyBtn.hidden = false;
+        copyBtn.hidden = isCardSecret;
         hideBtn.hidden = false;
-        copyBtn.focus();
+        (isCardSecret ? fields[0].copyBtn : copyBtn).focus();
     };
     const setMasked = () => {
         revealedCodes.delete(gift.id);
-        codeEl.textContent = "••••••••";
-        codeEl.dataset.state = "masked";
+        for (const f of fields) {
+            f.codeEl.textContent = "••••••••";
+            f.codeEl.dataset.state = "masked";
+            if (f.copyBtn) {
+                f.copyBtn.hidden = true;
+            }
+        }
         revealBtn.hidden = false;
         copyBtn.hidden = true;
         hideBtn.hidden = true;
@@ -332,7 +395,7 @@ function buildGiftCard(gift) {
                 body: { giftId: gift.id },
             });
             if (status === 200 && body && typeof body.code === "string") {
-                setRevealed(body.code);
+                setRevealed(body.code, typeof body.secret === "string" ? body.secret : "");
                 return;
             }
             if (status === 401) {
@@ -346,38 +409,39 @@ function buildGiftCard(gift) {
             cardError.hidden = false;
         } finally {
             revealBtn.disabled = false;
-            revealBtn.textContent = "显示激活码";
+            revealBtn.textContent = revealLabel;
         }
     });
 
-    copyBtn.addEventListener("click", async () => {
-        const code = revealedCodes.get(gift.id);
-        if (!code) {
+    copyBtn.addEventListener("click", () => {
+        const revealed = revealedCodes.get(gift.id);
+        if (!revealed) {
             return;
         }
-        feedback.hidden = true;
-        // 剪贴板 API 可用（需安全上下文）时直接复制；否则降级为选中并提示长按。
-        if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
-            try {
-                await navigator.clipboard.writeText(code);
-                feedback.textContent = "已复制，快去兑换吧";
-                feedback.hidden = false;
-                return;
-            } catch {
-                // 落入降级分支（微信 WebView 等无权限场景）。
-            }
-        }
-        selectCodeText(codeEl);
-        feedback.textContent = "请长按激活码进行复制";
-        feedback.hidden = false;
+        copyValue(revealed.code, fields[0].codeEl, "已复制，快去兑换吧", "请长按激活码进行复制");
     });
+
+    // card_secret 行内复制：卡号与密码分别复制，便于逐项粘贴到兑换表单。
+    for (const f of fields) {
+        if (!f.copyBtn) {
+            continue;
+        }
+        f.copyBtn.addEventListener("click", () => {
+            const revealed = revealedCodes.get(gift.id);
+            if (!revealed) {
+                return;
+            }
+            const label = f.key === "secret" ? "密码" : "卡号";
+            copyValue(revealed[f.key], f.codeEl, `已复制${label}`, `请长按${label}进行复制`);
+        });
+    }
 
     hideBtn.addEventListener("click", setMasked);
 
     return card;
 }
 
-// selectCodeText 选中明文激活码文本，供剪贴板不可用时手动复制。
+// selectCodeText 选中明文凭证文本，供剪贴板不可用时手动复制。
 function selectCodeText(codeEl) {
     const selection = window.getSelection();
     if (!selection) {
@@ -389,7 +453,7 @@ function selectCodeText(codeEl) {
     selection.addRange(range);
 }
 
-// clearAllRevealed 清空全部明文（退出/会话失效/重新进入礼品态前调用）。
+// clearAllRevealed 清空全部凭证明文（退出/会话失效/重新进入礼品态前调用）。
 function clearAllRevealed() {
     revealedCodes.clear();
     $("gift-list").replaceChildren();

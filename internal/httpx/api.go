@@ -51,15 +51,16 @@ type serviceTexts struct {
 }
 
 type giftSummaryDTO struct {
-	ID            string `json:"id"`
-	TypeKey       string `json:"typeKey"`
-	Title         string `json:"title"`
-	Subtitle      string `json:"subtitle,omitempty"`
-	ThemeVariant  string `json:"themeVariant,omitempty"`
-	Instructions  string `json:"instructions"`
-	ValidityText  string `json:"validityText,omitempty"`
-	RedemptionURL string `json:"redemptionUrl,omitempty"`
-	Ordinal       int    `json:"ordinal"`
+	ID             string `json:"id"`
+	TypeKey        string `json:"typeKey"`
+	CredentialMode string `json:"credentialMode"`
+	Title          string `json:"title"`
+	Subtitle       string `json:"subtitle,omitempty"`
+	ThemeVariant   string `json:"themeVariant,omitempty"`
+	Instructions   string `json:"instructions"`
+	ValidityText   string `json:"validityText,omitempty"`
+	RedemptionURL  string `json:"redemptionUrl,omitempty"`
+	Ordinal        int    `json:"ordinal"`
 }
 
 type sessionDTO struct {
@@ -192,14 +193,18 @@ type revealRequest struct {
 	GiftID string `json:"giftId"`
 }
 
+// revealResponse 统一返回双字段：code 模式 secret 为空（omitempty 省略）；
+// card_secret 模式 code 为卡号、secret 为密码。响应结构不随模式变化，前端不猜。
 type revealResponse struct {
-	Code string `json:"code"`
+	Code   string `json:"code"`
+	Secret string `json:"secret,omitempty"`
 }
 
 // maxGiftIDLen 是 giftId 的长度兜底（内部 ID 为 32 位 hex，留一倍余量防滥用）。
 const maxGiftIDLen = 64
 
-// handleRevealGift 按 giftId 返回本组某份礼品的明文激活码（WG-501，§9.1）。
+// handleRevealGift 按 giftId 返回本组某份礼品的明文凭证（WG-501，§9.1）：
+// code 模式返回激活码；card_secret 模式返回卡号+密码。
 // 必须持有有效会话；giftId 再次校验归属当前会话同行组，不信任前端列表。
 // 不存在/跨组/已停用统一 404 gift_unavailable，不区分原因；响应一律 no-store。
 func (s *Server) handleRevealGift(w http.ResponseWriter, r *http.Request) {
@@ -231,7 +236,7 @@ func (s *Server) handleRevealGift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, err := s.gift.RevealCode(r.Context(), payload.GroupID, req.GiftID)
+	code, secret, err := s.gift.RevealCode(r.Context(), payload.GroupID, req.GiftID)
 	switch {
 	case errors.Is(err, gift.ErrUnavailable):
 		writeError(w, http.StatusNotFound, "gift_unavailable", "礼物信息暂时无法读取，请刷新后重试")
@@ -246,7 +251,7 @@ func (s *Server) handleRevealGift(w http.ResponseWriter, r *http.Request) {
 
 	s.logger.Info("gift_revealed",
 		slog.String("request_id", requestIDFromContext(r.Context())))
-	writeJSON(w, http.StatusOK, revealResponse{Code: code})
+	writeJSON(w, http.StatusOK, revealResponse{Code: code, Secret: secret})
 }
 
 // sessionPayload 把 auth.GroupPayload 转成对外 DTO；thanksMessage 为全局致谢语
@@ -260,15 +265,16 @@ func (s *Server) sessionPayload(p *auth.GroupPayload) *sessionDTO {
 	}
 	for _, g := range p.Gifts {
 		dto.Gifts = append(dto.Gifts, giftSummaryDTO{
-			ID:            g.ID,
-			TypeKey:       g.TypeKey,
-			Title:         g.Title,
-			Subtitle:      g.Subtitle,
-			ThemeVariant:  g.ThemeVariant,
-			Instructions:  g.Instructions,
-			ValidityText:  g.ValidityText,
-			RedemptionURL: g.RedemptionURL,
-			Ordinal:       g.Ordinal,
+			ID:             g.ID,
+			TypeKey:        g.TypeKey,
+			CredentialMode: g.CredentialMode,
+			Title:          g.Title,
+			Subtitle:       g.Subtitle,
+			ThemeVariant:   g.ThemeVariant,
+			Instructions:   g.Instructions,
+			ValidityText:   g.ValidityText,
+			RedemptionURL:  g.RedemptionURL,
+			Ordinal:        g.Ordinal,
 		})
 	}
 	return dto

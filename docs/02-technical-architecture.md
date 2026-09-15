@@ -262,7 +262,9 @@ erDiagram
         text external_ref UK
         text group_id FK
         text type_key FK
+        text credential_mode
         blob code_ciphertext
+        blob secret_ciphertext
         text instructions_override
         text validity_text_override
         text redemption_url_override
@@ -289,7 +291,7 @@ erDiagram
 4. 每个成员只属于一个同行组，每个启用同行组至少有一名可登录成员。
 5. `ACCESS_KEY.key_digest` 全局唯一；明文密钥不入库。
 6. `ACCESS_KEY.group_id` 可空、不设唯一约束：一个密钥最多绑定一个同行组（由绑定事务内 `group_id IS NULL` 条件更新保证），一个同行组可绑定多个密钥，同组任一已绑定密钥看到同一份回礼。
-7. 每个启用同行组至少一份有效礼品，允许多份；`ordinal` 决定展示顺序。
+7. 每个启用同行组至少一份有效礼品，允许多份；`ordinal` 决定展示顺序。礼品凭证两种形态由实例级 `credential_mode` 自描述：`code` 为单一激活码（`code_ciphertext`），`card_secret` 为卡号+密码（`code_ciphertext` 为卡号、`secret_ciphertext` 为密码；`code` 模式该列为空 BLOB）。激活码/卡号全局唯一，密码不做唯一要求；明文凭据一律 AEAD 密文入库。
 8. 礼品类型通过外键引用配置，完全由数据文件驱动（无内置必备清单）；类型提供默认兑换说明、有效期和兑换入口（HTTPS URL 或微信小程序口令），礼品实例可按实际情况覆盖这些字段。
 9. 被停用密钥不能创建会话；停用时删除其有效会话。
 10. 时间统一以 UTC 存储。
@@ -395,10 +397,10 @@ nginx 把浏览器的 `/wedding/...` 映射成应用内部 `/...`。
 | `GET` | `/api/bootstrap` | `/wedding/api/bootstrap` | 服务状态、当前会话、同行组与礼品摘要 | 可选会话 |
 | `POST` | `/api/auth/login` | `/wedding/api/auth/login` | 校验并绑定/登录 | 来源校验 + 限流 |
 | `POST` | `/api/auth/logout` | `/wedding/api/auth/logout` | 撤销当前会话并清 Cookie | 会话 |
-| `POST` | `/api/gifts/reveal` | `/wedding/api/gifts/reveal` | 按 `giftId` 返回本组某份礼品码 | 会话 + 来源校验 |
+| `POST` | `/api/gifts/reveal` | `/wedding/api/gifts/reveal` | 按 `giftId` 返回本组某份礼品凭证 | 会话 + 来源校验 |
 | `GET` | `/healthz` | `/wedding/healthz` | 进程与 SQLite 只读健康检查 | 通用状态 |
 
-使用 `POST` 揭示礼品码，避免预取和普通缓存触发。`giftId` 必须再次校验属于当前会话同行组，不能只信任前端列表。M5 落地：`internal/gift` 负责归属校验与逐份解密；不存在/跨组/已停用统一 `404 + gift_unavailable` 同一响应体，无会话或会话失效 `401 + session_invalid` 并清 Cookie；响应一律 `no-store`（由统一 JSON 写出保证）。
+使用 `POST` 揭示礼品凭证，避免预取和普通缓存触发。`giftId` 必须再次校验属于当前会话同行组，不能只信任前端列表。M5 落地：`internal/gift` 负责归属校验与逐份解密；不存在/跨组/已停用统一 `404 + gift_unavailable` 同一响应体，无会话或会话失效 `401 + session_invalid` 并清 Cookie；响应一律 `no-store`（由统一 JSON 写出保证）。响应体统一为 `{code, secret?}`：`code` 模式为激活码（`secret` 省略），`card_secret` 模式 `code` 为卡号、`secret` 为密码；礼品摘要随登录/bootstrap 下发 `credentialMode`，前端据此渲染单码或卡号+密码双行形态。
 
 ### 9.2 请求与响应规则
 
@@ -722,6 +724,7 @@ flowchart LR
 | v2.5 | 2026-09-14 | 礼品类型契约修订（数据约束第 8 条）：取消首批内置必备清单硬校验，旅游年卡细化为地区变体；兑换入口由仅 HTTPS 放宽为 HTTPS URL 或微信小程序口令（`#小程序://名称/路径`），与 `docs/04-m0-decisions.md` v1.2 同步 |
 | v2.4 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：§16 各层测试改用显式命令（`go test -race ./...` 等，见 README），前端危险 API / 外部资源 / 持久存储与秘密按代码约定人工 + CR 把关；发布验证与 canary 冒烟改由 `docs/06-m6-runbook.md` §4 的人工核对清单覆盖；`docs/05-m2-runbook.md` §2/§4 与 `docs/06-m6-security-review.md` 同步 |
 | v2.3 | 2026-09-13 | 绑定约束放宽：0001 schema 直接移除 `access_key.group_id` 唯一约束（测试阶段直接重置数据库，不做版本兼容），ADR-006 同步修订；「密钥已绑定其他同行组」从统一模糊失败改为明确提示可联系新郎处理；登录页文案与页签标题调整 |
+| v2.3 | 2026-09-15 | 礼品凭证双形态：`GIFT_ITEM` 新增 `credential_mode`（`code`/`card_secret`）与 `secret_ciphertext` 列；reveal 响应统一 `{code, secret?}`，摘要下发 `credentialMode`；§6.1/§6.2/§9.1 同步，契约侧见 04 文档 D-15 修订与 §2.6 |
 | v2.2 | 2026-09-12 | §13.1 目录权限修正：`/data/wedding` 顶层与 `import` 为 root:root `0755`（原 `0700` 阻止容器 65534 穿越，上机 `data validate` 实测 permission denied），`nginx` 明确 root:root `0700` 不挂载进容器；与 `ops/deploy-app.sh` 同步 |
 | v2.1 | 2026-09-12 | 新增数据维护脚本：`ops/reset-db.sh`（清库重置）与 `ops/restore-db.sh`（备份还原，失败自动回滚）；§17.3 回滚改走脚本 |
 | v2.0 | 2026-09-12 | 仓库根目录由 `/opt/wedding` 更正为 `/root/WeddingGift`（staging 实际 git clone 位置），§5/§13.1/§14.1/§17.4 全部引用同步更新 |

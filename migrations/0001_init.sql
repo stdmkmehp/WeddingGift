@@ -4,7 +4,8 @@
 --   - member_login_name.normalized_value 全局唯一（本名与所有昵称指向唯一成员）；
 --   - access_key.group_id 可空、不设唯一约束（一个密钥最多绑定一个同行组，
 --     由绑定事务的条件更新保证；一个同行组可绑定多个密钥）；
---   - 明文密钥/礼品码不入库（key_digest 为 HMAC 摘要，code_ciphertext 为 AEAD 密文）；
+--   - 明文密钥/礼品凭证不入库（key_digest 为 HMAC 摘要，code_ciphertext 与
+--     secret_ciphertext 为 AEAD 密文）；
 --   - 时间统一以 UTC RFC3339 文本存储。
 --
 -- 幂等约定：全部语句带 IF NOT EXISTS，脚本本身可重复执行（框架层另有
@@ -57,12 +58,17 @@ CREATE TABLE IF NOT EXISTS gift_type (
     theme_variant          TEXT NOT NULL DEFAULT ''
 );
 
+-- 礼品凭证两种形态（credential_mode 实例级自描述）：
+--   - code：单一激活码，code_ciphertext 为激活码密文，secret_ciphertext 为空 BLOB；
+--   - card_secret：卡号+密码，code_ciphertext 为卡号密文，secret_ciphertext 为密码密文。
 CREATE TABLE IF NOT EXISTS gift_item (
     id                      TEXT PRIMARY KEY,
     external_ref            TEXT NOT NULL UNIQUE,
     group_id                TEXT NOT NULL REFERENCES recipient_group (id),
     type_key                TEXT NOT NULL REFERENCES gift_type (type_key),
+    credential_mode         TEXT NOT NULL CHECK (credential_mode IN ('code', 'card_secret')),
     code_ciphertext         BLOB NOT NULL,
+    secret_ciphertext       BLOB NOT NULL,
     instructions_override   TEXT NOT NULL DEFAULT '',
     validity_text_override  TEXT NOT NULL DEFAULT '',
     redemption_url_override TEXT NOT NULL DEFAULT '',

@@ -74,20 +74,25 @@ func newRevealEnv(t *testing.T, name, keyCode string) (*gift.Service, string, []
 	return gift.New(db, cx), outcome.GroupID, summaries
 }
 
-// TestRevealCode 主路径：本组每份礼品均可解密出导入时的明文（G002 三份含实例覆盖）。
+// TestRevealCode 主路径：本组每份礼品均可解密出导入时的明文（G002 三份含实例覆盖；
+// 第 2 份电影券为 card_secret 模式，卡号走 code、密码走 secret，其余 secret 为空）。
 func TestRevealCode(t *testing.T) {
 	svc, groupID, summaries := newRevealEnv(t, "阿伟", "20260002")
 	if len(summaries) != 3 {
 		t.Fatalf("G002 应有 3 份礼品，实际 %d", len(summaries))
 	}
-	want := []string{"FAKETRAVEL002", "FAKEMOVIE003", "FAKECOFFEE004"}
+	wantCodes := []string{"FAKETRAVEL002", "FAKEMOVIE003", "FAKECOFFEE004"}
+	wantSecrets := []string{"", "FAKEPASS003", ""}
 	for i, g := range summaries {
-		code, err := svc.RevealCode(context.Background(), groupID, g.ID)
+		code, secret, err := svc.RevealCode(context.Background(), groupID, g.ID)
 		if err != nil {
 			t.Fatalf("reveal %s 失败: %v", g.Title, err)
 		}
-		if code != want[i] {
-			t.Errorf("第 %d 份礼品码 = %q，期望 %q", i+1, code, want[i])
+		if code != wantCodes[i] {
+			t.Errorf("第 %d 份礼品凭证 = %q，期望 %q", i+1, code, wantCodes[i])
+		}
+		if secret != wantSecrets[i] {
+			t.Errorf("第 %d 份礼品密码 = %q，期望 %q", i+1, secret, wantSecrets[i])
 		}
 	}
 }
@@ -101,7 +106,7 @@ func TestRevealCodeForeignGroup(t *testing.T) {
 	}
 	// 王芳登录 G001，尝试 reveal G002 的礼品。
 	svc, groupID, _ := newRevealEnv(t, "王芳", "20260001")
-	_, err := svc.RevealCode(context.Background(), groupID, foreign[0].ID)
+	_, _, err := svc.RevealCode(context.Background(), groupID, foreign[0].ID)
 	if !errors.Is(err, gift.ErrUnavailable) {
 		t.Errorf("跨组 reveal 应返回 ErrUnavailable，实际 %v", err)
 	}
@@ -110,7 +115,7 @@ func TestRevealCodeForeignGroup(t *testing.T) {
 // TestRevealCodeUnknownID 不存在的 giftId 与跨组返回同一错误，不区分原因。
 func TestRevealCodeUnknownID(t *testing.T) {
 	svc, groupID, _ := newRevealEnv(t, "王芳", "20260001")
-	_, err := svc.RevealCode(context.Background(), groupID, "00000000000000000000000000000000")
+	_, _, err := svc.RevealCode(context.Background(), groupID, "00000000000000000000000000000000")
 	if !errors.Is(err, gift.ErrUnavailable) {
 		t.Errorf("未知 giftId 应返回 ErrUnavailable，实际 %v", err)
 	}

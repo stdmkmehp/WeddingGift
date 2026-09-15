@@ -231,42 +231,43 @@ func (d *DB) DeleteExpiredSessions(ctx context.Context, now string) (int64, erro
 	return n, nil
 }
 
-// GiftSummary 是一份礼品的对外展示摘要（不含激活码；明文码只走 M5 的 reveal 通道）。
+// GiftSummary 是一份礼品的对外展示摘要（不含凭证明文；明文只走 M5 的 reveal 通道）。
 type GiftSummary struct {
-	ID            string // 内部 ID，作为 reveal 接口的 giftId（不透明标识）
-	TypeKey       string
-	Title         string
-	Subtitle      string
-	ThemeVariant  string
-	Instructions  string
-	ValidityText  string
-	RedemptionURL string
-	Ordinal       int
+	ID             string // 内部 ID，作为 reveal 接口的 giftId（不透明标识）
+	TypeKey        string
+	CredentialMode string // code=单一激活码；card_secret=卡号+密码（卡号走 code 字段）
+	Title          string
+	Subtitle       string
+	ThemeVariant   string
+	Instructions   string
+	ValidityText   string
+	RedemptionURL  string
+	Ordinal        int
 }
 
-// GiftCodeCiphertext 返回指定礼品在当前同行组下的激活码密文（WG-501 reveal 通道）。
-// 礼品不存在、不属于该组或已停用都返回 (nil, false, nil)——调用方不得向外区分原因。
-func (d *DB) GiftCodeCiphertext(ctx context.Context, groupID, giftID string) ([]byte, bool, error) {
-	var blob []byte
-	err := d.db.QueryRowContext(ctx, `
-		SELECT code_ciphertext FROM gift_item
+// GiftCredentialCiphertexts 返回指定礼品在当前同行组下的凭证密文（WG-501 reveal 通道）。
+// code 模式的 secret 为空 BLOB。礼品不存在、不属于该组或已停用都返回 ok=false——
+// 调用方不得向外区分原因。
+func (d *DB) GiftCredentialCiphertexts(ctx context.Context, groupID, giftID string) (code, secret []byte, ok bool, err error) {
+	err = d.db.QueryRowContext(ctx, `
+		SELECT code_ciphertext, secret_ciphertext FROM gift_item
 		WHERE id = ? AND group_id = ? AND status = 'active'`,
 		giftID, groupID,
-	).Scan(&blob)
+	).Scan(&code, &secret)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, false, nil
+		return nil, nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("查询礼品码密文失败: %w", err)
+		return nil, nil, false, fmt.Errorf("查询礼品凭证密文失败: %w", err)
 	}
-	return blob, true, nil
+	return code, secret, true, nil
 }
 
 // GiftSummariesForGroup 返回同行组全部 active 礼品的展示摘要，按 ordinal 升序。
 // 实例级覆盖字段优先于类型默认值（空串表示未覆盖，见数据契约 §2.6）。
 func (d *DB) GiftSummariesForGroup(ctx context.Context, groupID string) ([]GiftSummary, error) {
 	rows, err := d.db.QueryContext(ctx, `
-		SELECT gi.id, gi.type_key, gt.title, gt.subtitle, gt.theme_variant,
+		SELECT gi.id, gi.type_key, gi.credential_mode, gt.title, gt.subtitle, gt.theme_variant,
 		       CASE WHEN gi.instructions_override <> '' THEN gi.instructions_override ELSE gt.default_instructions END,
 		       CASE WHEN gi.validity_text_override <> '' THEN gi.validity_text_override ELSE gt.default_validity_text END,
 		       CASE WHEN gi.redemption_url_override <> '' THEN gi.redemption_url_override ELSE gt.default_redemption_url END,
@@ -285,7 +286,7 @@ func (d *DB) GiftSummariesForGroup(ctx context.Context, groupID string) ([]GiftS
 	var out []GiftSummary
 	for rows.Next() {
 		var g GiftSummary
-		if err := rows.Scan(&g.ID, &g.TypeKey, &g.Title, &g.Subtitle, &g.ThemeVariant,
+		if err := rows.Scan(&g.ID, &g.TypeKey, &g.CredentialMode, &g.Title, &g.Subtitle, &g.ThemeVariant,
 			&g.Instructions, &g.ValidityText, &g.RedemptionURL, &g.Ordinal); err != nil {
 			return nil, err
 		}

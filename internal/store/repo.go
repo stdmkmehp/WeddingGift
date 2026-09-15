@@ -154,7 +154,8 @@ func (d *DB) ImportDataset(ctx context.Context, ds *domain.Dataset, cx *cryptox.
 		}
 	}
 
-	// 礼品实例：只写 AEAD 密文。
+	// 礼品实例：凭证只写 AEAD 密文。card_secret 模式的密码加密入
+	// secret_ciphertext；code 模式写入空 BLOB（列 NOT NULL，模式决定语义）。
 	for _, gi := range ds.GiftItems {
 		id, err := newID()
 		if err != nil {
@@ -162,14 +163,21 @@ func (d *DB) ImportDataset(ctx context.Context, ds *domain.Dataset, cx *cryptox.
 		}
 		ciphertext, err := cx.EncryptGiftCode(gi.CodePlaintext)
 		if err != nil {
-			return fmt.Errorf("加密礼品 %s 激活码失败: %w", gi.ExternalRef, err)
+			return fmt.Errorf("加密礼品 %s 凭证失败: %w", gi.ExternalRef, err)
+		}
+		secretCiphertext := []byte{}
+		if gi.CredentialMode == domain.CredentialModeCardSecret {
+			secretCiphertext, err = cx.EncryptGiftCode(gi.SecretPlaintext)
+			if err != nil {
+				return fmt.Errorf("加密礼品 %s 密码失败: %w", gi.ExternalRef, err)
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO gift_item
-			    (id, external_ref, group_id, type_key, code_ciphertext,
+			    (id, external_ref, group_id, type_key, credential_mode, code_ciphertext, secret_ciphertext,
 			     instructions_override, validity_text_override, redemption_url_override, ordinal, status)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, gi.ExternalRef, groupID[gi.GroupExternalRef], gi.TypeKey, ciphertext,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, gi.ExternalRef, groupID[gi.GroupExternalRef], gi.TypeKey, gi.CredentialMode, ciphertext, secretCiphertext,
 			gi.InstructionsOverride, gi.ValidityTextOverride, gi.RedemptionURLOverride,
 			gi.Ordinal, gi.Status,
 		); err != nil {

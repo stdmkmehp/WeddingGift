@@ -55,10 +55,13 @@ func TestDatasetReport(t *testing.T) {
 			t.Errorf("核对报告缺少 %q:\n%s", want, report)
 		}
 	}
-	// 报告不得包含任何明文密钥或礼品码。
+	// 报告不得包含任何明文密钥或礼品凭证（激活码/卡号/密码）。
 	for _, gi := range ds.GiftItems {
 		if strings.Contains(report, gi.CodePlaintext) {
-			t.Errorf("核对报告泄漏礼品码 %q", gi.CodePlaintext)
+			t.Errorf("核对报告泄漏礼品凭证 %q", gi.CodePlaintext)
+		}
+		if gi.SecretPlaintext != "" && strings.Contains(report, gi.SecretPlaintext) {
+			t.Errorf("核对报告泄漏礼品密码 %q", gi.SecretPlaintext)
 		}
 	}
 	for _, k := range ds.AccessKeys {
@@ -89,7 +92,7 @@ func TestLoadDatasetErrors(t *testing.T) {
 			writeCSV(t, filepath.Join(dir, domain.FileMembers), "external_ref,group_external_ref,display_name,can_login,sort_order\nM001,G001,王芳,yes,1\n")
 		}, "can_login"},
 		{"整数非法", func(t *testing.T, dir string) {
-			writeCSV(t, filepath.Join(dir, domain.FileGiftItems), "external_ref,group_external_ref,type_key,code_plaintext,instructions_override,validity_text_override,redemption_url_override,ordinal,status\nGI001,G001,coffee_voucher,X,,,,一,active\n")
+			writeCSV(t, filepath.Join(dir, domain.FileGiftItems), "external_ref,group_external_ref,type_key,credential_mode,code_plaintext,secret_plaintext,instructions_override,validity_text_override,redemption_url_override,ordinal,status\nGI001,G001,coffee_voucher,code,X,,,,,一,active\n")
 		}, "ordinal"},
 		{"空数据文件", func(t *testing.T, dir string) {
 			writeCSV(t, filepath.Join(dir, domain.FileGroups), "external_ref,salutation,custom_message,status\n")

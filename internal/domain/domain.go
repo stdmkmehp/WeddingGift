@@ -33,6 +33,19 @@ func IsValidLoginNameKind(s string) bool {
 	return s == LoginNameRealName || s == LoginNameNickname
 }
 
+// 礼品凭证形态枚举（gift_item.credential_mode）：
+//   - CredentialModeCode：单一激活码，SecretPlaintext 必须为空；
+//   - CredentialModeCardSecret：卡号+密码，CodePlaintext 承载卡号、SecretPlaintext 承载密码。
+const (
+	CredentialModeCode       = "code"
+	CredentialModeCardSecret = "card_secret"
+)
+
+// IsValidCredentialMode 报告礼品凭证形态是否合法。
+func IsValidCredentialMode(s string) bool {
+	return s == CredentialModeCode || s == CredentialModeCardSecret
+}
+
 // MiniProgramLinkPrefix 是微信小程序口令兑换入口的前缀（D-13 修订）：
 // 形如「#小程序://中影电影通/XMjgAr06fK3fSzj」，由微信"复制链接"产生，
 // 不是可点击 URL，网页端只能复制后引导用户粘贴到微信聊天打开。
@@ -75,6 +88,7 @@ const (
 	MaxValidityTextLen  = 128
 	MaxURLLen           = 512
 	MaxGiftCodeLen      = 128
+	MaxGiftSecretLen    = 64
 	MaxThemeVariantLen  = 32
 )
 
@@ -116,12 +130,14 @@ type GiftTypeImport struct {
 	ThemeVariant         string
 }
 
-// GiftItemImport 是一行礼品实例导入记录；CodePlaintext 只在导入流程中存在。
+// GiftItemImport 是一行礼品实例导入记录；CodePlaintext/SecretPlaintext 只在导入流程中存在。
 type GiftItemImport struct {
 	ExternalRef           string
 	GroupExternalRef      string
 	TypeKey               string
-	CodePlaintext         string
+	CredentialMode        string
+	CodePlaintext         string // code 模式为激活码；card_secret 模式为卡号
+	SecretPlaintext       string // code 模式必须为空；card_secret 模式为密码
 	InstructionsOverride  string
 	ValidityTextOverride  string
 	RedemptionURLOverride string

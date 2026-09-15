@@ -49,7 +49,7 @@
         }
       ],
       "gift_items": [
-        { "external_ref": "GI001", "type_key": "coffee_voucher", "code_plaintext": "FAKECOFFEE001", "ordinal": 1, "status": "active" }
+        { "external_ref": "GI001", "type_key": "coffee_voucher", "credential_mode": "code", "code_plaintext": "FAKECOFFEE001", "secret_plaintext": "", "ordinal": 1, "status": "active" }
       ]
     },
     {
@@ -80,12 +80,14 @@
         }
       ],
       "gift_items": [
-        { "external_ref": "GI002", "type_key": "travel_csj_first", "code_plaintext": "FAKETRAVEL002", "ordinal": 1, "status": "active" },
-        { "external_ref": "GI003", "type_key": "movie_voucher", "code_plaintext": "FAKEMOVIE003", "ordinal": 2, "status": "active" },
+        { "external_ref": "GI002", "type_key": "travel_csj_first", "credential_mode": "code", "code_plaintext": "FAKETRAVEL002", "secret_plaintext": "", "ordinal": 1, "status": "active" },
+        { "external_ref": "GI003", "type_key": "movie_voucher", "credential_mode": "card_secret", "code_plaintext": "FAKEMOVIE003", "secret_plaintext": "FAKEPASS003", "ordinal": 2, "status": "active" },
         {
           "external_ref": "GI004",
           "type_key": "coffee_voucher",
+          "credential_mode": "code",
           "code_plaintext": "FAKECOFFEE004",
+          "secret_plaintext": "",
           "instructions_override": "凭本券在指定旗舰店兑换限定联名饮品。",
           "validity_text_override": "自激活起 45 天内有效",
           "redemption_url_override": "https://example.com/redeem/coffee-special",
@@ -127,8 +129,8 @@
         }
       ],
       "gift_items": [
-        { "external_ref": "GI005", "type_key": "travel_csj_first", "code_plaintext": "FAKETRAVEL005", "ordinal": 1, "status": "active" },
-        { "external_ref": "GI006", "type_key": "movie_voucher", "code_plaintext": "FAKEMOVIE006", "ordinal": 2, "status": "active" }
+        { "external_ref": "GI005", "type_key": "travel_csj_first", "credential_mode": "code", "code_plaintext": "FAKETRAVEL005", "secret_plaintext": "", "ordinal": 1, "status": "active" },
+        { "external_ref": "GI006", "type_key": "movie_voucher", "credential_mode": "code", "code_plaintext": "FAKEMOVIE006", "secret_plaintext": "", "ordinal": 2, "status": "active" }
       ]
     }
   ],

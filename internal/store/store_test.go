@@ -216,9 +216,15 @@ func TestDatabaseConstraints(t *testing.T) {
 	}
 
 	// 组内 ordinal 唯一。
-	if err := exec(`INSERT INTO gift_item (id, external_ref, group_id, type_key, code_ciphertext, ordinal, status)
-		SELECT 'x2', 'GIX', group_id, type_key, code_ciphertext, ordinal, status FROM gift_item LIMIT 1`); err == nil {
+	if err := exec(`INSERT INTO gift_item (id, external_ref, group_id, type_key, credential_mode, code_ciphertext, secret_ciphertext, ordinal, status)
+		SELECT 'x2', 'GIX', group_id, type_key, credential_mode, code_ciphertext, secret_ciphertext, ordinal, status FROM gift_item LIMIT 1`); err == nil {
 		t.Error("同组重复 ordinal 应被 UNIQUE(group_id, ordinal) 拒绝")
+	}
+
+	// credential_mode CHECK：契约外形态应被拒绝。
+	if err := exec(`INSERT INTO gift_item (id, external_ref, group_id, type_key, credential_mode, code_ciphertext, secret_ciphertext, ordinal, status)
+		SELECT 'x3', 'GIY', group_id, type_key, 'qrcode', code_ciphertext, secret_ciphertext, 99, status FROM gift_item LIMIT 1`); err == nil {
+		t.Error("契约外 credential_mode 应被 CHECK 拒绝")
 	}
 }
 
@@ -340,13 +346,16 @@ func TestNoPlaintextLeak(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 收集全部敏感明文：密钥与礼品码。
+	// 收集全部敏感明文：密钥与礼品凭证（激活码/卡号/密码）。
 	var secrets []string
 	for _, k := range ds.AccessKeys {
 		secrets = append(secrets, k.CodePlaintext)
 	}
 	for _, gi := range ds.GiftItems {
 		secrets = append(secrets, gi.CodePlaintext)
+		if gi.SecretPlaintext != "" {
+			secrets = append(secrets, gi.SecretPlaintext)
+		}
 	}
 
 	// 扫描数据库主文件、可能的 WAL/SHM 文件与备份文件。

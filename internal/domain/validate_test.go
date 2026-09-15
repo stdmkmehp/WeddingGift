@@ -6,7 +6,8 @@ import (
 )
 
 // validDataset 构造一份覆盖主要业务形态的合法数据包：
-// 单身组、夫妻带娃组、多昵称成员、三种礼品类型、一组多份礼品、实例级覆盖、一对一密钥。
+// 单身组、夫妻带娃组、多昵称成员、三种礼品类型、一组多份礼品、实例级覆盖、
+// 两种凭证形态（单一激活码 + 卡号密码）、一对一密钥。
 func validDataset() *Dataset {
 	return &Dataset{
 		Groups: []GroupImport{
@@ -33,9 +34,9 @@ func validDataset() *Dataset {
 			{TypeKey: "coffee_voucher", Title: "咖啡券", DefaultInstructions: "凭码兑换"},
 		},
 		GiftItems: []GiftItemImport{
-			{ExternalRef: "GI001", GroupExternalRef: "G001", TypeKey: "coffee_voucher", CodePlaintext: "CODE001", Ordinal: 1, Status: StatusActive},
-			{ExternalRef: "GI002", GroupExternalRef: "G002", TypeKey: "travel_csj_first", CodePlaintext: "CODE002", Ordinal: 1, Status: StatusActive},
-			{ExternalRef: "GI003", GroupExternalRef: "G002", TypeKey: "movie_voucher", CodePlaintext: "CODE003", Ordinal: 2, Status: StatusActive,
+			{ExternalRef: "GI001", GroupExternalRef: "G001", TypeKey: "coffee_voucher", CredentialMode: CredentialModeCode, CodePlaintext: "CODE001", Ordinal: 1, Status: StatusActive},
+			{ExternalRef: "GI002", GroupExternalRef: "G002", TypeKey: "travel_csj_first", CredentialMode: CredentialModeCode, CodePlaintext: "CODE002", Ordinal: 1, Status: StatusActive},
+			{ExternalRef: "GI003", GroupExternalRef: "G002", TypeKey: "movie_voucher", CredentialMode: CredentialModeCardSecret, CodePlaintext: "CODE003", SecretPlaintext: "PW003", Ordinal: 2, Status: StatusActive,
 				RedemptionURLOverride: "https://example.com/movie-special"},
 		},
 		AccessKeys: []AccessKeyImport{
@@ -112,6 +113,18 @@ func TestValidateViolations(t *testing.T) {
 		{"礼品激活码重复", func(ds *Dataset) {
 			ds.GiftItems[1].CodePlaintext = "CODE001"
 		}, "激活码"},
+		{"卡号与他人激活码重复", func(ds *Dataset) {
+			ds.GiftItems[2].CodePlaintext = "CODE001"
+		}, "重复"},
+		{"凭证形态非法", func(ds *Dataset) {
+			ds.GiftItems[0].CredentialMode = "qrcode"
+		}, "credential_mode"},
+		{"code 模式多填密码", func(ds *Dataset) {
+			ds.GiftItems[0].SecretPlaintext = "PW999"
+		}, "必须为空"},
+		{"card_secret 模式缺密码", func(ds *Dataset) {
+			ds.GiftItems[2].SecretPlaintext = " "
+		}, "密码"},
 		{"同组 ordinal 重复", func(ds *Dataset) {
 			ds.GiftItems[2].Ordinal = 1
 		}, "ordinal"},

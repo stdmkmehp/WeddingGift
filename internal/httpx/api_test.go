@@ -106,9 +106,10 @@ func TestLoginSuccess(t *testing.T) {
 			ThanksMessage string `json:"thanksMessage"`
 			ExpiresAt     string `json:"expiresAt"`
 			Gifts         []struct {
-				ID           string `json:"id"`
-				Title        string `json:"title"`
-				Instructions string `json:"instructions"`
+				ID             string `json:"id"`
+				Title          string `json:"title"`
+				CredentialMode string `json:"credentialMode"`
+				Instructions   string `json:"instructions"`
 			} `json:"gifts"`
 		} `json:"session"`
 	}
@@ -120,6 +121,9 @@ func TestLoginSuccess(t *testing.T) {
 	}
 	if len(body.Session.Gifts) != 1 || body.Session.Gifts[0].Title != "咖啡券" {
 		t.Errorf("G001 应只有一份咖啡券，实际 %+v", body.Session.Gifts)
+	}
+	if body.Session.Gifts[0].CredentialMode != "code" {
+		t.Errorf("G001 咖啡券 credentialMode = %q, want code", body.Session.Gifts[0].CredentialMode)
 	}
 	if strings.Contains(rec.Body.String(), "FAKECOFFEE001") {
 		t.Error("摘要响应绝不允许包含明文礼品码")
@@ -537,6 +541,7 @@ func loginGiftIDs(t *testing.T, h http.Handler, name, keyCode string) (*http.Coo
 }
 
 // TestRevealGiftFlow 覆盖 WG-501 主路径：逐份揭示本组礼品、no-store、明文只走该通道。
+// 第 2 份电影券为 card_secret 模式：code 为卡号、secret 为密码；code 模式 secret 省略。
 func TestRevealGiftFlow(t *testing.T) {
 	h, _ := newAPITestServer(t, nil)
 
@@ -544,7 +549,8 @@ func TestRevealGiftFlow(t *testing.T) {
 	if len(ids) != 3 {
 		t.Fatalf("G002 应有 3 份礼品，实际 %d", len(ids))
 	}
-	want := []string{"FAKETRAVEL002", "FAKEMOVIE003", "FAKECOFFEE004"}
+	wantCodes := []string{"FAKETRAVEL002", "FAKEMOVIE003", "FAKECOFFEE004"}
+	wantSecrets := []string{"", "FAKEPASS003", ""}
 	for i, id := range ids {
 		rec := doReveal(h, cookie, `{"giftId":"`+id+`"}`)
 		if rec.Code != http.StatusOK {
@@ -554,13 +560,17 @@ func TestRevealGiftFlow(t *testing.T) {
 			t.Errorf("reveal 响应必须 no-store，实际 %q", cc)
 		}
 		var body struct {
-			Code string `json:"code"`
+			Code   string `json:"code"`
+			Secret string `json:"secret"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		if body.Code != want[i] {
-			t.Errorf("第 %d 份礼品码 = %q，期望 %q", i+1, body.Code, want[i])
+		if body.Code != wantCodes[i] {
+			t.Errorf("第 %d 份礼品凭证 = %q，期望 %q", i+1, body.Code, wantCodes[i])
+		}
+		if body.Secret != wantSecrets[i] {
+			t.Errorf("第 %d 份礼品密码 = %q，期望 %q", i+1, body.Secret, wantSecrets[i])
 		}
 	}
 }

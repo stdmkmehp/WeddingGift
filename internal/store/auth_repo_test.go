@@ -307,12 +307,16 @@ func TestGiftSummariesForGroup(t *testing.T) {
 		t.Fatalf("G002 应有 3 份礼品，实际 %d", len(gifts))
 	}
 	wantTitles := []string{"长三角旅游年卡", "电影券", "咖啡券"}
+	wantModes := []string{domain.CredentialModeCode, domain.CredentialModeCardSecret, domain.CredentialModeCode}
 	for i, g := range gifts {
 		if g.Title != wantTitles[i] {
 			t.Errorf("第 %d 份礼品标题 = %q, want %q", i, g.Title, wantTitles[i])
 		}
 		if g.Ordinal != i+1 {
 			t.Errorf("第 %d 份礼品 ordinal = %d", i, g.Ordinal)
+		}
+		if g.CredentialMode != wantModes[i] {
+			t.Errorf("第 %d 份礼品 credential_mode = %q, want %q", i, g.CredentialMode, wantModes[i])
 		}
 	}
 	// 实例覆盖（GI004）：说明、有效期、链接均来自实例。

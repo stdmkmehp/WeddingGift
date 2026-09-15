@@ -248,10 +248,10 @@ KC01,20269001,active,
 KC02,20269002,active,
 KC03,20269003,active,
 
-# gift_items.csv 追加（激活码为虚构值）
-GIC01,CANARY1,coffee_voucher,CANARYCOFFEE901,,,,1,active
-GIC02,CANARY2,travel_csj_first,CANARYTRAVEL902,,,,1,active
-GIC03,CANARY2,movie_voucher,CANARYMOVIE903,,,,2,active
+# gift_items.csv 追加（凭证为虚构值；credential_mode 二选一：code 激活码 / card_secret 卡号+密码）
+GIC01,CANARY1,coffee_voucher,code,CANARYCOFFEE901,,,,,1,active
+GIC02,CANARY2,travel_csj_first,code,CANARYTRAVEL902,,,,,1,active
+GIC03,CANARY2,movie_voucher,card_secret,CANARYMOVIE903,CANARYPASS903,,,,2,active
 ```
 
 说明：组 A 一名成员带昵称（覆盖多名称冒烟）、一份礼品；组 B 两份礼品（覆盖多礼品显示）；KC03 不绑定任何组，用于"组内第二密钥拒绝"用例。
@@ -261,7 +261,7 @@ GIC03,CANARY2,movie_voucher,CANARYMOVIE903,,,,2,active
 - [ ] 本名唯一无错别字；昵称归属正确且与任何本名/昵称不冲突；
 - [ ] 每成员只属一组，每组至少一名可登录成员；每组至少一份礼品、顺序正确；
 - [ ] 密钥严格 8 位 ASCII 数字、全局唯一、未被表格破坏前导零；
-- [ ] 三类礼品数量与采购数量一致；激活码未被转成科学计数法/日期；
+- [ ] 三类礼品数量与采购数量一致；激活码/卡号未被转成科学计数法/日期；`card_secret` 礼品已填密码、`code` 礼品密码列为空；
 - [ ] 兑换入口全部为 HTTPS 链接或小程序口令（`#小程序://名称/路径`）；canary 模板已并入且密钥为 2026900x 虚构号段。
 
 ## 4. 验证

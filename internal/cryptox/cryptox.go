@@ -123,7 +123,7 @@ func (s *Service) AccessKeyDigest(rawKey string) []byte {
 	return mac.Sum(nil)
 }
 
-// EncryptGiftCode 用 AES-256-GCM 加密礼品激活码，输出 nonce||ciphertext。
+// EncryptGiftCode 用 AES-256-GCM 加密礼品凭证（激活码/卡号/密码），输出 nonce||ciphertext。
 func (s *Service) EncryptGiftCode(plaintext string) ([]byte, error) {
 	nonce := make([]byte, s.giftAEAD.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -136,11 +136,11 @@ func (s *Service) EncryptGiftCode(plaintext string) ([]byte, error) {
 func (s *Service) DecryptGiftCode(blob []byte) (string, error) {
 	ns := s.giftAEAD.NonceSize()
 	if len(blob) < ns+s.giftAEAD.Overhead() {
-		return "", errors.New("礼品码密文长度非法")
+		return "", errors.New("礼品凭证密文长度非法")
 	}
 	plain, err := s.giftAEAD.Open(nil, blob[:ns], blob[ns:], nil)
 	if err != nil {
-		return "", errors.New("礼品码解密失败")
+		return "", errors.New("礼品凭证解密失败")
 	}
 	return string(plain), nil
 }

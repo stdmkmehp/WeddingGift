@@ -269,7 +269,7 @@ func (v *validator) checkGiftItems() {
 	}
 
 	seenRef := make(map[string]int, len(v.ds.GiftItems))
-	seenCode := make(map[string]string)            // code_plaintext -> external_ref
+	seenCode := make(map[string]string)            // code_plaintext（激活码或卡号） -> external_ref
 	seenOrdinal := make(map[string]map[int]string) // group -> ordinal -> external_ref
 	activeGiftCount := make(map[string]int)
 
@@ -290,14 +290,35 @@ func (v *validator) checkGiftItems() {
 		if !typeOK[gi.TypeKey] {
 			v.add(FileGiftItems, row, "礼品 %s 引用的礼品类型 %q 不存在", gi.ExternalRef, gi.TypeKey)
 		}
+		if !IsValidCredentialMode(gi.CredentialMode) {
+			v.add(FileGiftItems, row, "礼品 %s credential_mode 非法（%q，仅支持 code/card_secret）", gi.ExternalRef, gi.CredentialMode)
+		}
+		// code_plaintext 在两种模式下分别为激活码/卡号，全局唯一约束一致；
+		// 密码（secret_plaintext）不做唯一性要求。
+		codeLabel := "激活码"
+		if gi.CredentialMode == CredentialModeCardSecret {
+			codeLabel = "卡号"
+		}
 		if strings.TrimSpace(gi.CodePlaintext) == "" {
-			v.add(FileGiftItems, row, "礼品 %s 激活码不能为空", gi.ExternalRef)
+			v.add(FileGiftItems, row, "礼品 %s %s不能为空", gi.ExternalRef, codeLabel)
 		} else {
-			v.checkFieldLen(FileGiftItems, row, "激活码", gi.CodePlaintext, MaxGiftCodeLen)
+			v.checkFieldLen(FileGiftItems, row, codeLabel, gi.CodePlaintext, MaxGiftCodeLen)
 			if prevRef, dup := seenCode[gi.CodePlaintext]; dup {
-				v.add(FileGiftItems, row, "礼品 %s 激活码与礼品 %s 重复", gi.ExternalRef, prevRef)
+				v.add(FileGiftItems, row, "礼品 %s %s与礼品 %s 重复", gi.ExternalRef, codeLabel, prevRef)
 			}
 			seenCode[gi.CodePlaintext] = gi.ExternalRef
+		}
+		switch gi.CredentialMode {
+		case CredentialModeCode:
+			if strings.TrimSpace(gi.SecretPlaintext) != "" {
+				v.add(FileGiftItems, row, "礼品 %s credential_mode=code 时 secret_plaintext 必须为空", gi.ExternalRef)
+			}
+		case CredentialModeCardSecret:
+			if strings.TrimSpace(gi.SecretPlaintext) == "" {
+				v.add(FileGiftItems, row, "礼品 %s 密码不能为空（card_secret 模式）", gi.ExternalRef)
+			} else {
+				v.checkFieldLen(FileGiftItems, row, "密码", gi.SecretPlaintext, MaxGiftSecretLen)
+			}
 		}
 		if gi.Ordinal < 1 {
 			v.add(FileGiftItems, row, "礼品 %s ordinal 必须从 1 起", gi.ExternalRef)

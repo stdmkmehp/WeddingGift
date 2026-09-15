@@ -1,7 +1,7 @@
-external_ref,group_external_ref,type_key,code_plaintext,instructions_override,validity_text_override,redemption_url_override,ordinal,status
-GI001,G001,coffee_voucher,FAKECOFFEE001,,,,1,active
-GI002,G002,travel_csj_first,FAKETRAVEL002,,,,1,active
-GI003,G002,movie_voucher,FAKEMOVIE003,,,,2,active
-GI004,G002,coffee_voucher,FAKECOFFEE004,凭本券在指定旗舰店兑换限定联名饮品。,自激活起 45 天内有效,https://example.com/redeem/coffee-special,3,active
-GI005,G003,travel_csj_first,FAKETRAVEL005,,,,1,active
-GI006,G003,movie_voucher,FAKEMOVIE006,,,,2,active
+external_ref,group_external_ref,type_key,credential_mode,code_plaintext,secret_plaintext,instructions_override,validity_text_override,redemption_url_override,ordinal,status
+GI001,G001,coffee_voucher,code,FAKECOFFEE001,,,,,1,active
+GI002,G002,travel_csj_first,code,FAKETRAVEL002,,,,,1,active
+GI003,G002,movie_voucher,card_secret,FAKEMOVIE003,FAKEPASS003,,,,2,active
+GI004,G002,coffee_voucher,code,FAKECOFFEE004,,凭本券在指定旗舰店兑换限定联名饮品。,自激活起 45 天内有效,https://example.com/redeem/coffee-special,3,active
+GI005,G003,travel_csj_first,code,FAKETRAVEL005,,,,,1,active
+GI006,G003,movie_voucher,code,FAKEMOVIE006,,,,,2,active
