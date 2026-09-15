@@ -20,7 +20,7 @@
 #     完成后自行 ops/start-app.sh 起服；
 #   - 不动 app.key：密钥摘要与礼品密文均由它派生，重新导入须用同一把 key
 #     （换 key 后旧备份全部不可解密；本脚本不负责换 key）；
-#   - 不动 /data/wedding/backups、/data/wedding/import、nginx 与 cron；
+#   - 不动 /data/wedding/backups、/data/wedding/import、/data/wedding/append、nginx 与 cron；
 #   - 不自动导入数据（导入是显式独立步骤，见 docs/06-m6-runbook.md §2.7）。
 #
 # 用法（在正式机器 /root/WeddingGift 仓库根执行）：

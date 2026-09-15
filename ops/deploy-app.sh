@@ -46,13 +46,13 @@ esac
 echo "--- 创建 WeddingGift 自有目录（/data/wedding） ---"
 # 目录收束：运行时数据全部在 /data/wedding 下；secrets 后续放 app.key（只读挂载）。
 # 权限模型（bind mount 保留宿主机属主与权限位，容器内进程以 65534 运行）：
-#   - 顶层与 import 为 root:root 0755——65534 必须能穿越顶层、并穿越+读取 import 内的
-#     CSV（文件由 root 放置，0644）；若为 root:root 0700，65534 连顶层都进不去，
-#     validate/import/serve 全链路 EACCES（2026-09-12 staging 实测）；
+#   - 顶层与 import/append 为 root:root 0755——65534 必须能穿越顶层、并穿越+读取
+#     import/append 内的 CSV（文件由 root 放置，0644）；若为 root:root 0700，
+#     65534 连顶层都进不去，validate/import/append/serve 全链路 EACCES（2026-09-12 staging 实测）；
 #   - data/backups/secrets 为 65534:65534 0700——应用以非 root 写库、写备份、读 app.key；
 #   - nginx 为 root:root 0700——不挂载进容器，仅 root 人工操作（改前备份与片段副本）。
-mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
-chmod 755 /data/wedding /data/wedding/import
+mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/append /data/wedding/nginx
+chmod 755 /data/wedding /data/wedding/import /data/wedding/append
 chmod 700 /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/nginx
 chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ls -la /data/wedding

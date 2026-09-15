@@ -121,6 +121,143 @@ func TestLoadDatasetErrors(t *testing.T) {
 	}
 }
 
+const appendFixturesDir = "../../testdata/fixtures-append"
+
+func TestLoadAppendFixtures(t *testing.T) {
+	ds, errs := admin.LoadAppendDataset(appendFixturesDir)
+	if len(errs) > 0 {
+		t.Fatalf("追加 fixtures 装载失败: %v", errs)
+	}
+
+	// 装载数量与追加虚构数据包 README 一致。
+	if got := len(ds.Groups); got != 1 {
+		t.Errorf("同行组数 = %d, want 1", got)
+	}
+	if got := len(ds.Members); got != 3 {
+		t.Errorf("成员数 = %d, want 3", got)
+	}
+	if got := len(ds.LoginNames); got != 4 {
+		t.Errorf("登录名称数 = %d, want 4", got)
+	}
+	if got := len(ds.GiftTypes); got != 1 {
+		t.Errorf("礼品类型数 = %d, want 1", got)
+	}
+	if got := len(ds.GiftItems); got != 2 {
+		t.Errorf("礼品数 = %d, want 2", got)
+	}
+	if got := len(ds.AccessKeys); got != 0 {
+		t.Errorf("密钥数 = %d, want 0（追加不装载密钥）", got)
+	}
+}
+
+// TestLoadAppendMissingAndEmptyFiles 覆盖追加语义的文件在场规则：
+// 缺失文件视为零新增；在场文件允许仅表头零数据行。
+func TestLoadAppendMissingAndEmptyFiles(t *testing.T) {
+	dir := t.TempDir()
+	// 只提供一个实体文件；另放一个仅表头的文件。
+	writeCSV(t, filepath.Join(dir, domain.FileGiftTypes),
+		"type_key,title,subtitle,default_instructions,default_validity_text,default_redemption_url,theme_variant\ncake_card,蛋糕卡,一份甜蜜心意,凭码兑换,60 天,https://example.com/redeem/cake,\n")
+	writeCSV(t, filepath.Join(dir, domain.FileGroups),
+		"external_ref,salutation,custom_message,status\n")
+
+	ds, errs := admin.LoadAppendDataset(dir)
+	if len(errs) > 0 {
+		t.Fatalf("缺失/仅表头文件不应产生解析错误: %v", errs)
+	}
+	if len(ds.GiftTypes) != 1 || len(ds.Groups) != 0 || len(ds.Members) != 0 || len(ds.LoginNames) != 0 || len(ds.GiftItems) != 0 {
+		t.Errorf("装载结果不符合预期: %+v", ds)
+	}
+}
+
+// TestLoadAppendAccessKeys 覆盖追加模式的密钥文件规则：
+// 仅表头可容忍；含数据行即拒绝（防误当成新增密钥）。
+func TestLoadAppendAccessKeys(t *testing.T) {
+	header := "external_ref,code_plaintext,status,bind_group_external_ref\n"
+
+	dir := t.TempDir()
+	writeCSV(t, filepath.Join(dir, domain.FileAccessKeys), header)
+	if _, errs := admin.LoadAppendDataset(dir); len(errs) > 0 {
+		t.Fatalf("仅表头的密钥文件不应报错: %v", errs)
+	}
+
+	writeCSV(t, filepath.Join(dir, domain.FileAccessKeys), header+"K901,20260901,active,\n")
+	errs := mustLoadAppendErr(t, dir)
+	assertErrContains(t, errs, "追加模式不支持新增密钥")
+
+	// 表头不符同样报错（与首次导入契约一致）。
+	writeCSV(t, filepath.Join(dir, domain.FileAccessKeys), "external_ref,code_plaintext\n")
+	mustLoadAppendErr(t, dir)
+}
+
+// TestLoadAppendBadHeader 在场文件表头不符时报错（追加不放宽表头契约）。
+func TestLoadAppendBadHeader(t *testing.T) {
+	dir := t.TempDir()
+	writeCSV(t, filepath.Join(dir, domain.FileGroups), "external_ref,salutation\nG101,某家\n")
+	errs := mustLoadAppendErr(t, dir)
+	assertErrContains(t, errs, "缺少必需列")
+}
+
+func mustLoadAppendErr(t *testing.T, dir string) []error {
+	t.Helper()
+	_, errs := admin.LoadAppendDataset(dir)
+	if len(errs) == 0 {
+		t.Fatal("应产生解析错误")
+	}
+	return errs
+}
+
+func assertErrContains(t *testing.T, errs []error, want string) {
+	t.Helper()
+	for _, e := range errs {
+		if strings.Contains(e.Error(), want) {
+			return
+		}
+	}
+	t.Fatalf("错误中未找到含 %q 的条目: %v", want, errs)
+}
+
+func TestAppendReport(t *testing.T) {
+	ds, errs := admin.LoadAppendDataset(appendFixturesDir)
+	if len(errs) > 0 {
+		t.Fatalf("追加 fixtures 装载失败: %v", errs)
+	}
+	// 模拟库内已首导主 fixtures 的现状（仅需报告消费的三个集合）。
+	ex := &domain.ExistingState{
+		GroupRefs:  map[string]string{"G001": "active", "G002": "active"},
+		MemberRefs: map[string]bool{"M006": true},
+		TypeKeys:   map[string]bool{"movie_voucher": true},
+	}
+	report := admin.AppendReport(ds, ex)
+
+	for _, want := range []string{
+		"同行组（新增）: 1", "成员（新增）: 3", "登录名称（新增）: 4", "礼品类型（新增）: 1", "礼品实例（新增）: 2",
+		"cake_card=1", "movie_voucher=1", "G101=1", "G002=1",
+		"引用既有同行组: G001, G002",
+		"引用既有成员: M006",
+		"引用既有礼品类型: movie_voucher",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("追加核对报告缺少 %q:\n%s", want, report)
+		}
+	}
+	// 报告不得包含明文礼品凭证、姓名或昵称。
+	for _, gi := range ds.GiftItems {
+		if strings.Contains(report, gi.CodePlaintext) {
+			t.Errorf("追加核对报告泄漏礼品凭证 %q", gi.CodePlaintext)
+		}
+	}
+	for _, m := range ds.Members {
+		if strings.Contains(report, m.DisplayName) {
+			t.Errorf("追加核对报告泄漏成员姓名 %q", m.DisplayName)
+		}
+	}
+	for _, ln := range ds.LoginNames {
+		if strings.Contains(report, ln.Value) {
+			t.Errorf("追加核对报告泄漏登录名称 %q", ln.Value)
+		}
+	}
+}
+
 // copyFixtures 把虚构数据包复制到临时目录，供破坏性用例修改。
 func copyFixtures(t *testing.T) string {
 	t.Helper()

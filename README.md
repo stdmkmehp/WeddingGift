@@ -23,6 +23,7 @@ web/                单页应用（index.html + app.css + app.js，go:embed 进�
 deploy/             共享机器 compose、nginx 插入片段、cron 单元样例
 ops/                本地预览、构建、部署、停起服、数据维护与本机备份脚本
 testdata/fixtures/  虚构数据包（M0 数据契约样例，无真实数据）
+testdata/fixtures-append/  虚构追加数据包（`data append` 契约样例与演练，无真实数据）
 docs/               需求 / 产品 / 技术 / 开发计划 / M0 决策 / M2 手册 / M6 安全核对与手册
 ```
 
@@ -69,6 +70,10 @@ go run ./cmd/wedding data validate --dir testdata/fixtures
 
 # 校验通过后单事务导入（要求空库；任一错误全部回滚；不生成密钥）
 go run ./cmd/wedding data import --dir testdata/fixtures
+
+# 上线后纯追加（要求已首导；开放世界校验 + 单事务纯 INSERT，在线可用；--dry-run 零写入复核）
+go run ./cmd/wedding data append --dir testdata/fixtures-append --dry-run
+go run ./cmd/wedding data append --dir testdata/fixtures-append
 
 # 脱敏状态（内部编号与数量，无明文）
 go run ./cmd/wedding status

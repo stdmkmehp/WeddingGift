@@ -320,6 +320,220 @@ func TestBackupTo(t *testing.T) {
 	}
 }
 
+const appendFixturesDir = "../../testdata/fixtures-append"
+
+func loadAppendFixtures(t *testing.T) *domain.Dataset {
+	t.Helper()
+	ds, errs := admin.LoadAppendDataset(appendFixturesDir)
+	if len(errs) > 0 {
+		t.Fatalf("追加 fixtures 解析失败: %v", errs)
+	}
+	return ds
+}
+
+func TestLoadExistingState(t *testing.T) {
+	db, ctx := openTestDB(t)
+	if _, err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	importFixtures(t, db, ctx)
+
+	state, err := db.LoadExistingState(ctx, testCrypto(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := state.GroupRefs["G001"]; got != domain.StatusActive {
+		t.Errorf("G001 status = %q, want active", got)
+	}
+	if got := state.DisplayNameNorms["王芳"]; got != "M001" {
+		t.Errorf("王芳 -> %q, want M001", got)
+	}
+	if got := state.LoginNameNorms["芳芳"]; got != "M001/nickname" {
+		t.Errorf("芳芳 -> %q, want M001/nickname", got)
+	}
+	if len(state.TypeKeys) != 3 {
+		t.Errorf("既有礼品类型数 = %d, want 3", len(state.TypeKeys))
+	}
+	if got := state.OrdinalsByGroup["G002"][3]; got != "GI004" {
+		t.Errorf("G002 ordinal 3 -> %q, want GI004", got)
+	}
+	// 既有凭证在基线中解密为明文（仅存在于调用栈），激活码与卡号均覆盖。
+	for code, wantRef := range map[string]string{
+		"FAKECOFFEE001": "GI001",
+		"FAKEMOVIE003":  "GI003",
+	} {
+		if got := state.GiftCodePlaintexts[code]; got != wantRef {
+			t.Errorf("凭证 %s -> %q, want %q", code, got, wantRef)
+		}
+	}
+}
+
+func TestAppendDatasetEndToEnd(t *testing.T) {
+	db, ctx := openTestDB(t)
+	if _, err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	importFixtures(t, db, ctx)
+
+	ds := loadAppendFixtures(t)
+	state, err := db.LoadExistingState(ctx, testCrypto(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if valErrs := domain.ValidateAppend(ds, state); len(valErrs) > 0 {
+		t.Fatalf("追加 fixtures 校验失败: %v", valErrs)
+	}
+	if report := admin.AppendReport(ds, state); !strings.Contains(report, "引用既有同行组: G001, G002") {
+		t.Errorf("追加报告缺少引用既有同行组:\n%s", report)
+	}
+
+	if err := db.AppendDataset(ctx, ds, testCrypto(t)); err != nil {
+		t.Fatalf("追加失败: %v", err)
+	}
+
+	stats, err := db.Stats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert := func(name string, got, want int) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s = %d, want %d", name, got, want)
+		}
+	}
+	assert("同行组", stats.Groups, 4)
+	assert("成员", stats.Members, 9)
+	assert("登录名称", stats.LoginNames, 13)
+	assert("礼品类型", stats.GiftTypes, 4)
+	assert("礼品", stats.GiftItems, 8)
+	assert("密钥", stats.AccessKeys, 3) // 追加不触碰密钥
+
+	// 追加后的基线应包含新实体：凭证可解密回明文、ordinal/昵称落位正确。
+	after, err := db.LoadExistingState(ctx, testCrypto(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := after.GiftCodePlaintexts["FAKECAKE101"]; got != "GI101" {
+		t.Errorf("FAKECAKE101 -> %q, want GI101", got)
+	}
+	if got := after.GiftCodePlaintexts["FAKEMOVIE102"]; got != "GI102" {
+		t.Errorf("FAKEMOVIE102 -> %q, want GI102", got)
+	}
+	if got := after.OrdinalsByGroup["G002"][4]; got != "GI102" {
+		t.Errorf("G002 ordinal 4 -> %q, want GI102", got)
+	}
+	if got := after.LoginNameNorms["小满"]; got != "M006/nickname" {
+		t.Errorf("小满 -> %q, want M006/nickname", got)
+	}
+	if got := after.DisplayNameNorms["周斌"]; got != "M101" {
+		t.Errorf("周斌 -> %q, want M101", got)
+	}
+}
+
+func TestAppendEmptyDBRefused(t *testing.T) {
+	db, ctx := openTestDB(t)
+	if _, err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	err := db.AppendDataset(ctx, loadAppendFixtures(t), testCrypto(t))
+	if err == nil || !strings.Contains(err.Error(), "空") {
+		t.Fatalf("空库追加应被拒绝并引导 data import，实际: %v", err)
+	}
+}
+
+// TestAppendConflictRollback 覆盖追加语义的核心保证：试图重新声明或冲突于
+// 既有数据时整体回滚、数据库零写入。
+func TestAppendConflictRollback(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(ds *domain.Dataset)
+		want   string
+	}{
+		{"重新声明既有同行组", func(ds *domain.Dataset) {
+			ds.Groups = append(ds.Groups, domain.GroupImport{ExternalRef: "G001", Salutation: "重复组", Status: domain.StatusActive})
+		}, "已存在于数据库"},
+		{"凭证与库内重复", func(ds *domain.Dataset) {
+			ds.GiftItems[0].CodePlaintext = "FAKECOFFEE001"
+		}, "重复"},
+		{"既有成员追加本名", func(ds *domain.Dataset) {
+			ds.LoginNames = append(ds.LoginNames, domain.LoginNameImport{MemberExternalRef: "M002", Value: "张某", Kind: domain.LoginNameRealName})
+		}, "nickname"},
+		{"ordinal 与库内冲突", func(ds *domain.Dataset) {
+			ds.GiftItems[1].Ordinal = 3 // G002 库内已占 ordinal 3（GI004）
+		}, "ordinal"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			db, ctx := openTestDB(t)
+			if _, err := db.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			importFixtures(t, db, ctx)
+
+			ds := loadAppendFixtures(t)
+			c.mutate(ds)
+			err := db.AppendDataset(ctx, ds, testCrypto(t))
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("应因 %q 拒绝追加，实际: %v", c.want, err)
+			}
+
+			// 整体回滚：计数与首导后完全一致。
+			stats, serr := db.Stats(ctx)
+			if serr != nil {
+				t.Fatal(serr)
+			}
+			if stats.Groups != 3 || stats.Members != 6 || stats.LoginNames != 9 || stats.GiftTypes != 3 || stats.GiftItems != 6 {
+				t.Errorf("冲突追加未整体回滚: %+v", stats)
+			}
+		})
+	}
+}
+
+// TestAppendNoPlaintextLeak：追加后数据库文件中扫描不到任何追加包里的明文
+// 礼品凭证（与 TestNoPlaintextLeak 同一门禁的追加侧）。
+func TestAppendNoPlaintextLeak(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	dbPath := filepath.Join(dir, "wedding.db")
+	db, err := store.Open(ctx, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ImportDataset(ctx, loadFixtures(t), testCrypto(t)); err != nil {
+		t.Fatal(err)
+	}
+	ds := loadAppendFixtures(t)
+	if err := db.AppendDataset(ctx, ds, testCrypto(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		data, err := os.ReadFile(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, gi := range ds.GiftItems {
+			if strings.Contains(string(data), gi.CodePlaintext) {
+				t.Errorf("文件 %s 中发现追加包明文礼品凭证", filepath.Base(path))
+			}
+			if gi.SecretPlaintext != "" && strings.Contains(string(data), gi.SecretPlaintext) {
+				t.Errorf("文件 %s 中发现追加包明文礼品密码", filepath.Base(path))
+			}
+		}
+	}
+}
+
 // TestNoPlaintextLeak 是 G3 门禁的关键测试：导入后数据库文件与备份文件中
 // 扫描不到任何明文卡片密钥或礼品激活码。
 func TestNoPlaintextLeak(t *testing.T) {

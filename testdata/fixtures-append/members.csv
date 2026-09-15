@@ -1,0 +1,4 @@
+external_ref,group_external_ref,display_name,can_login,sort_order
+M101,G101,周斌,true,1
+M102,G101,吴倩,true,2
+M103,G001,王小果,false,2

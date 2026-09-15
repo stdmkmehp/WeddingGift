@@ -80,13 +80,14 @@ docker ps --format '{{.Names}}\t{{.Status}}'
 ### 2.3 创建数据目录
 
 ```sh
-mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/nginx
+mkdir -p /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/import /data/wedding/append /data/wedding/nginx
 # 权限模型（容器内进程为 65534，bind mount 保留宿主机属主与权限位）：
-#   - 顶层与 import 为 root:root 0755——65534 必须能穿越顶层、并穿越+读取 import 内的
-#     CSV（文件由 root 放置，0644）；若为 root:root 0700，validate/import/serve 全链路 EACCES；
+#   - 顶层与 import/append 为 root:root 0755——65534 必须能穿越顶层、并穿越+读取
+#     import/append 内的 CSV（文件由 root 放置，0644）；若为 root:root 0700，
+#     validate/import/append/serve 全链路 EACCES；
 #   - data/backups/secrets 为 65534:65534 0700——应用以非 root 写库、写备份、读 app.key；
 #   - nginx 为 root:root 0700——不进容器，仅 root 人工操作（改前备份与片段副本）。
-chmod 755 /data/wedding /data/wedding/import
+chmod 755 /data/wedding /data/wedding/import /data/wedding/append
 chmod 700 /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/wedding/nginx
 chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ```
@@ -263,6 +264,8 @@ GIC03,CANARY2,movie_voucher,card_secret,CANARYMOVIE903,CANARYPASS903,,,,2,active
 - [ ] 密钥严格 8 位 ASCII 数字、全局唯一、未被表格破坏前导零；
 - [ ] 三类礼品数量与采购数量一致；激活码/卡号未被转成科学计数法/日期；`card_secret` 礼品已填密码、`code` 礼品密码列为空；
 - [ ] 兑换入口全部为 HTTPS 链接或小程序口令（`#小程序://名称/路径`）；canary 模板已并入且密钥为 2026900x 虚构号段。
+
+> 本节为**首次导入**（六文件全量、空库）的数据包规范。上线后的纯追加数据包（五类实体、可缺文件）见 §6.4。
 
 ## 4. 验证
 
@@ -441,12 +444,37 @@ ops/start-app.sh         # 完成后起服
 
 脚本流程：打印当前 status 留档 → 清库前自动备份（`wedding-pre-reset-<TS>.db`）→ 删库（含 -wal/-shm）→ migrate 重建 schema。完成后保持停止状态执行 `ops/import-data.sh` 重新导入（§2.7 第 3–5 步），核对无误再 `ops/start-app.sh` 起服。app.key 保持不变，同一数据包可重复导入。
 
+### 6.4 在线追加数据（ops/append-data.sh，契约 §2.8 / D-21）
+
+上线后追加朋友与礼品的标准手段：**只增不改不删，无需停服**。典型场景：追加一个家庭（新同行组 + 新成员 + 新登录名称）、发新类型礼品（新 `gift_types` 行 + 新 `gift_items` 行，如蛋糕卡；新类型 `theme_variant` 复用现有变体或留空，不改前端）、给既有组补发礼品、给既有成员加昵称。**不追加密钥**——新朋友使用尚未绑定的既有密钥首登绑定（`status` 可见未绑定数量）。
+
+数据包为五类实体的契约 CSV（列契约同 §3.3）：文件允许缺失（视为零新增）或仅表头零数据行；`access_keys.csv` 含数据行会被拒绝。校验为开放世界校验（库内现状 ∪ 追加包）：重新声明既有 `external_ref`/`type_key`、本名/登录名称与库内冲突、给既有成员加 `real_name`、ordinal 或激活码/卡号与库内重复等均整体拒绝（完整规则见 `docs/04-m0-decisions.md` §2.8）。本地预演可用 `testdata/fixtures-append/` 虚构追加包（含 dry-run 演练命令）。
+
+```sh
+# 1. 上传追加数据包（文件 0644 root:root，同 §2.7 第 2 步；追加专用目录，与首导 import 分离）
+scp -r <追加数据目录>/ root@106.54.173.55:/data/wedding/append/
+
+# 2. 追加前回滚点备份（online backup，服务运行中可执行）
+docker compose -p wedding -f deploy/compose.yaml run --rm -T app backup create \
+  --output "/data/wedding/backups/wedding-pre-append-$(date -u +%Y%m%d-%H%M%S).db"
+
+# 3. 在线追加（服务保持运行）：dry-run 复核 → 单事务纯 INSERT → status 核对
+ops/append-data.sh
+
+# 4. 核对无误后清理明文源文件
+rm -rf /data/wedding/append/*
+```
+
+核对要点：dry-run 核对报告中的各类新增数量与「引用既有同行组/成员/礼品类型」清单逐项比对离线事实源；追加后 `status` 计数 = 追加前 + 新增数。校验不过或冲突时数据库零写入，修正离线数据后重跑本流程；已写入但需撤销时按 §6.2 还原追加前备份。
+
 ## 7. 回滚预案
 
 | 场景 | 操作 |
 |---|---|
 | 数据预检/导入失败 | 未启动新服务，数据库保持导入前状态（单事务零写入）；修正离线数据后从 §2.7 第 3 步重来 |
 | 导入后数量核对不符 | 不启动服务；离线核对事实源，必要时 `rm /data/wedding/data/wedding.db*` 后从 §2.6 重来（密钥摘要与礼品密文随库重建，app.key 不变即可） |
+| 追加（§6.4）校验不过或冲突 | 数据库零写入（事务内复跑校验 + 单事务回滚）；修正离线数据后重跑 `ops/append-data.sh` |
+| 追加已写入但需撤销 | `ops/stop-app.sh` 后 `ops/restore-db.sh wedding-pre-append-<TS>.db` 还原追加前备份，再 `ops/start-app.sh` |
 | 启动后应用异常 | `ops/stop-app.sh`；用 `ops/restore-db.sh <备份文件>` 恢复（仅操作 DB，先停服、失败自动回滚、完成后 `ops/start-app.sh`；可选恢复后清空 SESSION）；镜像问题则在开发机 `git checkout <上一 commit>` 重新 `ops/build-image.sh`，传输后 load 并 `ops/start-app.sh` |
 | 需整体下线业务 | 按 M2 runbook §6 人工删除 nginx wedding 块并热加载，再 `docker compose -p wedding -f deploy/compose.yaml down`（真实数据库文件保留不动，操作前再次备份） |
 | nginx 异常（`/wedding/` 全 404） | 第一嫌疑是 live conf 被 Costra 模板刷新覆盖：`grep -c wedding /data/conf/nginx/costra.cloud.conf` 为 0 即确认，按 §2.9 重新插入片段并热加载 |
@@ -486,6 +514,7 @@ ops/start-app.sh         # 完成后起服
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.7 | 2026-09-15 | 新增 §6.4 在线追加数据流程（`ops/append-data.sh`）：上线后只增不改不删，无需停服——dry-run 复核 → 单事务纯 INSERT → status 核对，配套追加前备份与明文清理；追加数据包走专用目录 `/data/wedding/append`（与首导 `import` 语义分离，§2.3 目录与权限模型同步，compose 增加只读挂载）；§3.3 末尾加追加包指引；§7 回滚预案补追加场景；契约见 `docs/04-m0-decisions.md` v1.3（D-21 + §2.8） |
 | v2.6 | 2026-09-14 | 礼品类型契约修订同步（`docs/04-m0-decisions.md` v1.2）：§3.3 canary 模板中 `travel_annual_card` 改为 `travel_csj_first`；§3.3 核对清单「兑换链接全部 HTTPS」改为「兑换入口为 HTTPS 链接或小程序口令」 |
 | v2.5 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：本地回归改为 README 中列出的显式命令（前端危险 API / 外部资源 / 持久存储与秘密按约定人工 + CR 把关）；§1 前置条件同步；§2.2 自检改为列明只读命令人工核对（不再产出 `ops/records/` 日志）；§4.1 改为 8 组真实 URL 核对命令、§4.2 改为 8 步 canary curl 序列；§3.3/§4.4/§5/§7/§8/§9 同步移除脚本引用 |
 | v2.4 | 2026-09-14 | 迁移/导入/统计命令固化为脚本：新增 `ops/migrate.sh`（schema 迁移，容器运行中拒绝执行）、`ops/import-data.sh`（§2.7 第 3–5 步 validate → import → status 一体化，validate 不过零写入中止）、`ops/status.sh`（只读脱敏统计，运行/停止均可执行）；`ops/reset-db.sh` 与 `ops/restore-db.sh` 内联的 migrate/status 调用改为复用上述脚本；`migrations/0001_init.sql` 全部 CREATE 语句加 `IF NOT EXISTS`（SQL 层幂等，与 user_version 框架门控双保险）；§2.6/§2.7/§5/§6.3 同步，§6.3 清库重导顺序修正为「停服 → 清库 → 导入 → 起服」 |

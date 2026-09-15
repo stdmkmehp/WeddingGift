@@ -5,6 +5,7 @@ package admin
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,16 +19,64 @@ import (
 // utf8BOM 用于剥离 Excel 等工具导出的 UTF-8 BOM。
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
+// csvFileReader 按契约列读取单个 CSV；首次导入与追加导入的区别仅在文件
+// 缺失与零数据行的处理（readCSV 严格 / readAppendCSV 宽松）。
+type csvFileReader func(path string, columns []string) ([]csvRow, []error)
+
 // LoadDataset 从 dir 读取六个契约 CSV 文件并解析为 domain.Dataset。
 // 返回数据集与全部解析错误（文件缺失、表头不符、行解析失败）；
 // 只要存在错误，调用方就必须中止后续校验与导入。
 func LoadDataset(dir string) (*domain.Dataset, []error) {
 	ds := &domain.Dataset{}
+	errs := loadEntityFiles(ds, dir, readCSV)
+
+	rows, ferrs := readCSV(filepath.Join(dir, domain.FileAccessKeys),
+		[]string{"external_ref", "code_plaintext", "status", "bind_group_external_ref"})
+	if len(ferrs) > 0 {
+		errs = append(errs, ferrs...)
+	} else {
+		for _, r := range rows {
+			ds.AccessKeys = append(ds.AccessKeys, domain.AccessKeyImport{
+				ExternalRef:          r.fields["external_ref"],
+				CodePlaintext:        r.fields["code_plaintext"],
+				Status:               r.fields["status"],
+				BindGroupExternalRef: r.fields["bind_group_external_ref"],
+			})
+		}
+	}
+	return ds, errs
+}
+
+// LoadAppendDataset 从 dir 读取追加数据包（五类实体的契约 CSV，数据契约 §2.8）。
+// 与 LoadDataset 的差异：
+//   - 五个实体文件均允许缺失（视为该实体零新增）或仅表头零数据行；
+//   - access_keys.csv 不参与追加：缺失或仅表头均可，含数据行即报错，
+//     防止「以为追加了密钥但没生效」。
+//
+// 表头契约与行解析规则与首次导入完全一致。
+func LoadAppendDataset(dir string) (*domain.Dataset, []error) {
+	ds := &domain.Dataset{}
+	errs := loadEntityFiles(ds, dir, readAppendCSV)
+
+	keyRows, ferrs := readAppendCSV(filepath.Join(dir, domain.FileAccessKeys),
+		[]string{"external_ref", "code_plaintext", "status", "bind_group_external_ref"})
+	if len(ferrs) > 0 {
+		errs = append(errs, ferrs...)
+	} else if len(keyRows) > 0 {
+		errs = append(errs, fmt.Errorf("%s: 追加模式不支持新增密钥（含 %d 行数据；请移除该文件或仅保留表头）",
+			domain.FileAccessKeys, len(keyRows)))
+	}
+	return ds, errs
+}
+
+// loadEntityFiles 按契约列装载五类共有实体（同行组/成员/登录名称/礼品类型/
+// 礼品实例），首次导入与追加导入共用。返回全部解析错误；只要存在错误，
+// 调用方就必须中止后续校验与导入。
+func loadEntityFiles(ds *domain.Dataset, dir string, read csvFileReader) []error {
 	var errs []error
 
 	load := func(name string, columns []string, fill func(map[string]string, int)) {
-		path := filepath.Join(dir, name)
-		rows, ferrs := readCSV(path, columns)
+		rows, ferrs := read(filepath.Join(dir, name), columns)
 		if len(ferrs) > 0 {
 			errs = append(errs, ferrs...)
 			return
@@ -114,18 +163,7 @@ func LoadDataset(dir string) (*domain.Dataset, []error) {
 			})
 		})
 
-	load(domain.FileAccessKeys,
-		[]string{"external_ref", "code_plaintext", "status", "bind_group_external_ref"},
-		func(f map[string]string, _ int) {
-			ds.AccessKeys = append(ds.AccessKeys, domain.AccessKeyImport{
-				ExternalRef:          f["external_ref"],
-				CodePlaintext:        f["code_plaintext"],
-				Status:               f["status"],
-				BindGroupExternalRef: f["bind_group_external_ref"],
-			})
-		})
-
-	return ds, errs
+	return errs
 }
 
 // csvRow 是一行已按表头映射的 CSV 记录；line 是源文件行号（含表头行，从 1 起）。
@@ -134,14 +172,40 @@ type csvRow struct {
 	line   int
 }
 
-// readCSV 读取一个契约 CSV：校验表头与 required 完全一致（不多不少、顺序无关），
-// 然后逐行映射为 csvRow。密钥与激活码等字段一律按原文本读取，不做任何数值化。
+// readCSV 读取一个契约 CSV（首次导入语义）：文件必须存在且至少一行数据。
 func readCSV(path string, required []string) ([]csvRow, []error) {
 	name := filepath.Base(path)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, []error{fmt.Errorf("读取 %s 失败: %w", name, err)}
 	}
+	rows, errs := parseCSVRows(name, raw, required)
+	if len(errs) > 0 {
+		return nil, errs
+	}
+	if len(rows) == 0 {
+		return nil, []error{fmt.Errorf("%s: 没有数据行", name)}
+	}
+	return rows, nil
+}
+
+// readAppendCSV 读取一个契约 CSV（追加语义）：文件缺失视为零数据行；
+// 在场文件允许仅表头零数据行。
+func readAppendCSV(path string, required []string) ([]csvRow, []error) {
+	name := filepath.Base(path)
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, []error{fmt.Errorf("读取 %s 失败: %w", name, err)}
+	}
+	return parseCSVRows(name, raw, required)
+}
+
+// parseCSVRows 校验表头与 required 完全一致（不多不少、顺序无关），
+// 然后逐行映射为 csvRow。密钥与激活码等字段一律按原文本读取，不做任何数值化。
+func parseCSVRows(name string, raw []byte, required []string) ([]csvRow, []error) {
 	raw = bytes.TrimPrefix(raw, utf8BOM)
 
 	r := csv.NewReader(bytes.NewReader(raw))
@@ -178,9 +242,6 @@ func readCSV(path string, required []string) ([]csvRow, []error) {
 			fields[col] = rec[i]
 		}
 		rows = append(rows, csvRow{fields: fields, line: line})
-	}
-	if len(rows) == 0 {
-		return nil, []error{fmt.Errorf("%s: 没有数据行", name)}
 	}
 	return rows, nil
 }

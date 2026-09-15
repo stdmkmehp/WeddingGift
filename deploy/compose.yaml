@@ -37,12 +37,14 @@ services:
 
     # 仅挂载 WeddingGift 自有目录；M1 占位主页不需要数据库/秘密，
     # 这些挂载为后续里程碑预留，占位阶段目录为空亦不影响启动。
-    # import 为 M6 真实数据导入的只读入口（导入完成后源文件即移走）。
+    # import 为 M6 真实数据首导的只读入口，append 为上线后追加数据的只读入口
+    #（导入/追加完成后源文件即移走）。
     volumes:
       - /data/wedding/data:/data/wedding/data
       - /data/wedding/backups:/data/wedding/backups
       - /data/wedding/secrets:/data/wedding/secrets:ro
       - /data/wedding/import:/data/wedding/import:ro
+      - /data/wedding/append:/data/wedding/append:ro
 
     networks:
       - costra_default

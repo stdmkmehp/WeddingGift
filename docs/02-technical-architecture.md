@@ -484,6 +484,7 @@ wedding migrate
 wedding healthz-check
 wedding data validate --dir <data-dir>
 wedding data import --dir <data-dir>
+wedding data append --dir <data-dir> [--dry-run]
 wedding status
 wedding key revoke --ref <card-ref>
 wedding backup create --output <path>
@@ -495,6 +496,7 @@ wedding backup create --output <path>
 
 - `data validate` 校验本名唯一、登录名称全局唯一、每位可登录成员有本名、8 位数字密钥唯一、每组至少一份礼品、礼品类型存在和 HTTPS 链接合法。
 - `data import` 在应用停机时执行，先完整校验，再用一个事务写入；任一错误全部回滚。
+- `data append` 是上线后的纯追加入口（契约 §2.8）：开放世界校验（库内现状 ∪ 追加包）在事务内复跑后单事务纯 INSERT，任一错误全部回滚；仅新增五类实体（不含密钥），不修改、不删除既有数据；服务在线时可安全执行（WAL + busy_timeout，写事务极短）；`--dry-run` 只校验并输出脱敏核对报告（含引用既有实体清单），零写入。
 - 明文密钥和礼品码从权限为 `0600` 的文件或 stdin 读取，不作为命令行参数。
 - `status` 只显示内部编号和数量，不显示明文密钥或礼品码。
 - `key revoke` 停用密钥并删除其会话，不自动生成替代密钥。
@@ -527,11 +529,12 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 | `/data/wedding/data/` | SQLite 数据库 | `0700` 目录、数据库 `0600`，属主容器用户 65534 |
 | `/data/wedding/backups/` | 本机 cron 备份 | 属主容器用户 65534；默认保留最近 72 份（≈3 天），不写入 Costra 目录 |
 | `/data/wedding/secrets/` | `app.key` | `0700` 目录、`0600` 文件，属主容器用户 65534、只读挂载 |
-| `/data/wedding/import/` | 临时导入文件 | root:root `0755` 目录、`0644` 文件（容器 65534 需穿越并读取）；导入后删除或移回离线位置 |
+| `/data/wedding/import/` | 首导临时数据包 | root:root `0755` 目录、`0644` 文件（容器 65534 需穿越并读取）；导入后删除或移回离线位置 |
+| `/data/wedding/append/` | 追加临时数据包（`data append`） | 同 `import`：root:root `0755` 目录、`0644` 文件、只读挂载；追加后删除或移回离线位置 |
 | `/data/wedding/nginx/` | 修改前备份和 WeddingGift 片段 | root:root `0700`，不挂载进容器；不覆盖 Costra 全量配置 |
 | `/etc/cron.d/wedding` | WeddingGift 本机备份 cron 单元 | 独立文件；不修改 Costra 的 `costra-standby`/`costra-analyze`；拆除时删除 |
 
-属主与权限约定：`data`、`backups`、`secrets` 及其内容属主为容器运行用户 65534、目录 `0700`——bind mount 保留宿主机属主，容器内非 root 进程必须穿越目录并读写/读取这些文件，root 属主的 `0700` 目录会直接导致访问失败；`/data/wedding` 顶层与 `import` 为 root:root `0755`——顶层不直接存放文件，但容器 65534 必须能穿越顶层并读取 `import` 内的 `0644` CSV，若为 `0700` 则 validate/import/serve 全链路 EACCES（2026-09-12 上机实测）；`nginx` 为 root:root `0700`，不挂载进容器、仅 root 人工操作。
+属主与权限约定：`data`、`backups`、`secrets` 及其内容属主为容器运行用户 65534、目录 `0700`——bind mount 保留宿主机属主，容器内非 root 进程必须穿越目录并读写/读取这些文件，root 属主的 `0700` 目录会直接导致访问失败；`/data/wedding` 顶层与 `import`/`append` 为 root:root `0755`——顶层不直接存放文件，但容器 65534 必须能穿越顶层并读取 `import`/`append` 内的 `0644` CSV，若为 `0700` 则 validate/import/append/serve 全链路 EACCES（2026-09-12 上机实测）；`nginx` 为 root:root `0700`，不挂载进容器、仅 root 人工操作。
 
 绝不挂载 `/data/pgsql*`、`/data/redis`、`/data/slave`、`/data/conf/*.env` 或 Docker socket。
 
@@ -721,6 +724,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.6 | 2026-09-15 | 新增 `data append` 上线后纯追加入口（§11）：开放世界校验（库内现状 ∪ 追加包）+ 单事务纯 INSERT，仅新增五类实体（不含密钥）、不修改不删除既有数据，服务在线可执行；追加数据包走专用目录 `/data/wedding/append`（与首导 `import` 语义分离，§13.1 表同步）；契约侧见 04 文档 §2.8，上机流程见 06 runbook §6.4 |
 | v2.5 | 2026-09-14 | 礼品类型契约修订（数据约束第 8 条）：取消首批内置必备清单硬校验，旅游年卡细化为地区变体；兑换入口由仅 HTTPS 放宽为 HTTPS URL 或微信小程序口令（`#小程序://名称/路径`），与 `docs/04-m0-decisions.md` v1.2 同步 |
 | v2.4 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：§16 各层测试改用显式命令（`go test -race ./...` 等，见 README），前端危险 API / 外部资源 / 持久存储与秘密按代码约定人工 + CR 把关；发布验证与 canary 冒烟改由 `docs/06-m6-runbook.md` §4 的人工核对清单覆盖；`docs/05-m2-runbook.md` §2/§4 与 `docs/06-m6-security-review.md` 同步 |
 | v2.3 | 2026-09-13 | 绑定约束放宽：0001 schema 直接移除 `access_key.group_id` 唯一约束（测试阶段直接重置数据库，不做版本兼容），ADR-006 同步修订；「密钥已绑定其他同行组」从统一模糊失败改为明确提示可联系新郎处理；登录页文案与页签标题调整 |

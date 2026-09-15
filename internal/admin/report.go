@@ -21,43 +21,109 @@ func DatasetReport(ds *domain.Dataset) string {
 	fmt.Fprintf(&b, "礼品类型: %d\n", len(ds.GiftTypes))
 	fmt.Fprintf(&b, "礼品实例: %d（active %d）\n", len(ds.GiftItems), countActiveGifts(ds))
 	fmt.Fprintf(&b, "卡片密钥: %d\n", len(ds.AccessKeys))
+	writeGiftDistribution(&b, ds)
+	return b.String()
+}
 
-	// 各礼品类型实例数量（按 type_key 排序，输出稳定）。
+// AppendReport 生成追加数据包的脱敏核对报告（数据契约 §2.8）：五类实体的新增
+// 数量、各类型/各组礼品分布，以及对库内既有同行组/成员/礼品类型的引用清单
+// （仅 external_ref，字典序）。报告只含内部编号与数量，不含明文礼品凭证、
+// 姓名或昵称。
+func AppendReport(ds *domain.Dataset, ex *domain.ExistingState) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "同行组（新增）: %d（active %d）\n", len(ds.Groups), countGroups(ds, domain.StatusActive))
+	fmt.Fprintf(&b, "成员（新增）: %d（可登录 %d）\n", len(ds.Members), countCanLogin(ds))
+	fmt.Fprintf(&b, "登录名称（新增）: %d\n", len(ds.LoginNames))
+	fmt.Fprintf(&b, "礼品类型（新增）: %d\n", len(ds.GiftTypes))
+	fmt.Fprintf(&b, "礼品实例（新增）: %d（active %d）\n", len(ds.GiftItems), countActiveGifts(ds))
+	writeGiftDistribution(&b, ds)
+
+	// 引用既有实体清单：追加包引用了库内哪些组/成员/类型（校验通过后，
+	// 这些引用必然不是重新声明）。
+	writeRefList(&b, "引用既有同行组", referencedExistingGroups(ds, ex))
+	writeRefList(&b, "引用既有成员", referencedExistingMembers(ds, ex))
+	writeRefList(&b, "引用既有礼品类型", referencedExistingTypes(ds, ex))
+	return b.String()
+}
+
+// writeGiftDistribution 输出各类型礼品与各组礼品的数量分布（输出稳定有序）。
+func writeGiftDistribution(b *strings.Builder, ds *domain.Dataset) {
 	byType := make(map[string]int)
-	for _, gi := range ds.GiftItems {
-		byType[gi.TypeKey]++
-	}
-	if len(byType) > 0 {
-		keys := make([]string, 0, len(byType))
-		for k := range byType {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		var parts []string
-		for _, k := range keys {
-			parts = append(parts, fmt.Sprintf("%s=%d", k, byType[k]))
-		}
-		fmt.Fprintf(&b, "各类型礼品: %s\n", strings.Join(parts, ", "))
-	}
-
-	// 每组礼品数量（按 external_ref 排序）。
 	byGroup := make(map[string]int)
 	for _, gi := range ds.GiftItems {
+		byType[gi.TypeKey]++
 		byGroup[gi.GroupExternalRef]++
 	}
-	if len(byGroup) > 0 {
-		refs := make([]string, 0, len(byGroup))
-		for r := range byGroup {
-			refs = append(refs, r)
-		}
-		sort.Strings(refs)
-		var parts []string
-		for _, r := range refs {
-			parts = append(parts, fmt.Sprintf("%s=%d", r, byGroup[r]))
-		}
-		fmt.Fprintf(&b, "每组礼品: %s\n", strings.Join(parts, ", "))
+	writeCountMap(b, "各类型礼品", byType)
+	writeCountMap(b, "每组礼品", byGroup)
+}
+
+func writeCountMap(b *strings.Builder, label string, counts map[string]int) {
+	keys := sortedKeys(counts)
+	if len(keys) == 0 {
+		return
 	}
-	return b.String()
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%d", k, counts[k]))
+	}
+	fmt.Fprintf(b, "%s: %s\n", label, strings.Join(parts, ", "))
+}
+
+func writeRefList(b *strings.Builder, label string, refs []string) {
+	if len(refs) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "%s: %s\n", label, strings.Join(refs, ", "))
+}
+
+// referencedExistingGroups 返回追加包引用的库内既有同行组（来自成员与礼品的引用）。
+func referencedExistingGroups(ds *domain.Dataset, ex *domain.ExistingState) []string {
+	set := make(map[string]bool)
+	for _, m := range ds.Members {
+		if _, ok := ex.GroupRefs[m.GroupExternalRef]; ok {
+			set[m.GroupExternalRef] = true
+		}
+	}
+	for _, gi := range ds.GiftItems {
+		if _, ok := ex.GroupRefs[gi.GroupExternalRef]; ok {
+			set[gi.GroupExternalRef] = true
+		}
+	}
+	return sortedKeys(set)
+}
+
+// referencedExistingMembers 返回追加包引用的库内既有成员（来自登录名称的引用）。
+func referencedExistingMembers(ds *domain.Dataset, ex *domain.ExistingState) []string {
+	set := make(map[string]bool)
+	for _, ln := range ds.LoginNames {
+		if ex.MemberRefs[ln.MemberExternalRef] {
+			set[ln.MemberExternalRef] = true
+		}
+	}
+	return sortedKeys(set)
+}
+
+// referencedExistingTypes 返回追加包引用的库内既有礼品类型（来自礼品的引用）。
+func referencedExistingTypes(ds *domain.Dataset, ex *domain.ExistingState) []string {
+	set := make(map[string]bool)
+	for _, gi := range ds.GiftItems {
+		if ex.TypeKeys[gi.TypeKey] {
+			set[gi.TypeKey] = true
+		}
+	}
+	return sortedKeys(set)
+}
+
+// sortedKeys 返回 map 键的字典序切片（计数语义下值为非空集合）。
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func countGroups(ds *domain.Dataset, status string) int {

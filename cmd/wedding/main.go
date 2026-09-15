@@ -8,6 +8,7 @@
 //	wedding migrate                        应用数据库 migration（发布时显式执行）
 //	wedding data validate --dir <dir>      只读校验数据文件并输出脱敏核对报告
 //	wedding data import --dir <dir>        校验通过后单事务导入（要求空库，任一错误全部回滚）
+//	wedding data append --dir <dir> [--dry-run]  开放世界校验通过后单事务纯追加（要求已首导，在线可用）
 //	wedding status                         输出脱敏统计（内部编号与数量，不含明文）
 //	wedding key revoke --ref <card-ref>    停用密钥并删除其会话
 //	wedding backup create --output <path>  SQLite online backup 一致性备份
@@ -117,10 +118,13 @@ func runMigrate(cfg app.Config) int {
 
 func runData(cfg app.Config, args []string) int {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "用法: wedding data <validate|import> --dir <数据目录>")
+		fmt.Fprintln(os.Stderr, "用法: wedding data <validate|import|append> --dir <数据目录>")
 		return 2
 	}
 	sub := args[0]
+	if sub == "append" {
+		return runDataAppend(cfg, args[1:])
+	}
 	if sub != "validate" && sub != "import" {
 		fmt.Fprintln(os.Stderr, "未知 data 子命令:", sub)
 		return 2
@@ -176,6 +180,71 @@ func runData(cfg app.Config, args []string) int {
 		return 1
 	}
 	fmt.Println("导入完成：全部数据已在单事务内写入，明文密钥与礼品码未落库。")
+	return 0
+}
+
+// runDataAppend 处理 data append：装载追加包 → 读库内现状基线（含用 app.key
+// 解密既有礼品凭证）→ 开放世界校验 → 核对报告 → --dry-run 止步或单事务纯追加。
+// 服务在线时可安全执行（纯 INSERT 短事务；WAL + busy_timeout）。
+func runDataAppend(cfg app.Config, args []string) int {
+	fs := flag.NewFlagSet("data append", flag.ContinueOnError)
+	dir := fs.String("dir", "", "追加数据目录（五类实体契约 CSV，允许缺失或仅表头）")
+	dryRun := fs.Bool("dry-run", false, "只校验并输出核对报告，不写入数据库")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *dir == "" {
+		fmt.Fprintln(os.Stderr, "缺少 --dir 参数")
+		return 2
+	}
+
+	ds, loadErrs := admin.LoadAppendDataset(*dir)
+	if len(loadErrs) > 0 {
+		fmt.Fprintln(os.Stderr, "数据文件解析失败：")
+		for _, e := range loadErrs {
+			fmt.Fprintln(os.Stderr, "  -", e)
+		}
+		return 1
+	}
+
+	// 追加校验是开放世界校验：必须读取库内现状基线。
+	cx, err := cryptox.Load(cfg.AppKeyPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "append 失败:", err)
+		return 1
+	}
+	db, ctx, cancel, err := openStore(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "append 失败:", err)
+		return 1
+	}
+	defer db.Close()
+	defer cancel()
+
+	state, err := db.LoadExistingState(ctx, cx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "append 失败:", err)
+		return 1
+	}
+	if valErrs := domain.ValidateAppend(ds, state); len(valErrs) > 0 {
+		fmt.Fprintf(os.Stderr, "数据校验未通过（%d 处问题）：\n", len(valErrs))
+		for _, e := range valErrs {
+			fmt.Fprintln(os.Stderr, "  -", e)
+		}
+		return 1
+	}
+
+	fmt.Print("数据校验通过。核对报告（脱敏）：\n", admin.AppendReport(ds, state))
+	if *dryRun {
+		fmt.Println("dry-run：未写入任何数据。")
+		return 0
+	}
+
+	if err := db.AppendDataset(ctx, ds, cx); err != nil {
+		fmt.Fprintln(os.Stderr, "append 失败:", err)
+		return 1
+	}
+	fmt.Println("追加完成：全部新增数据已在单事务内写入，明文礼品凭证未落库。")
 	return 0
 }
 
@@ -278,6 +347,7 @@ func usage() {
   wedding migrate                        应用数据库 migration
   wedding data validate --dir <dir>      只读校验数据文件（六个契约 CSV）
   wedding data import --dir <dir>        校验通过后单事务导入（要求空库）
+  wedding data append --dir <dir> [--dry-run]  校验通过后单事务纯追加（要求已首导，在线可用）
   wedding status                         输出脱敏统计
   wedding key revoke --ref <ref>         停用密钥并删除其会话
   wedding backup create --output <path>  SQLite online backup 一致性备份

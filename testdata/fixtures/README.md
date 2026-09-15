@@ -16,6 +16,8 @@
 
 字段定义见 `docs/04-m0-decisions.md` 第 2 节。
 
+> 上线后纯追加（`data append`，契约 §2.8）的虚构样例在 `testdata/fixtures-append/`，需先完成本包首导再演练。
+
 ## 覆盖矩阵
 
 | 场景 | 数据 |
