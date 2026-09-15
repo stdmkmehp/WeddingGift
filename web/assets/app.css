@@ -751,12 +751,22 @@ body[data-view="login"]::before {
     word-break: break-all;
 }
 
-/* card_secret 模式的凭证行：标签 + 码 + 行内复制按钮；code 模式为无标签单行 */
+/* card_secret 模式的凭证行：标签 + 码 + 行内复制按钮；code 模式为无标签单行。
+   标签与码左对齐、行内复制按钮右对齐（按钮恒定占位，遮蔽态不位移）。 */
 .gift-credential {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: var(--space-3);
+}
+
+.gift-credential .gift-code {
+    flex: 1 1 auto;
+    text-align: left;
+}
+
+/* code 模式无标签单行：保持居中呈现 */
+.gift-credential:not(:has(.gift-credential-label)) .gift-code {
+    text-align: center;
 }
 
 .gift-credential + .gift-credential {
@@ -776,6 +786,7 @@ body[data-view="login"]::before {
     padding: var(--space-1) var(--space-3);
     font-size: 13px;
     flex: 0 0 auto;
+    margin-left: auto;
 }
 
 .gift-code[data-state="revealed"] {
