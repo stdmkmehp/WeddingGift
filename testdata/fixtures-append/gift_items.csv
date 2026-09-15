@@ -1,3 +1,4 @@
 external_ref,group_external_ref,type_key,credential_mode,code_plaintext,secret_plaintext,instructions_override,validity_text_override,redemption_url_override,ordinal,status
-GI101,G101,cake_card,code,FAKECAKE101,,,,,1,active
-GI102,G002,movie_voucher,code,FAKEMOVIE102,,,,,4,active
+GI101,G101,cake_card,code,FAKE101,,,,,1,active
+GI102,G001,movie_voucher,code,FAKE102,,,,,3,active
+GI103,G002,cake_card,code,FAKE103,,,,,3,active
