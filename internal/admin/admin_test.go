@@ -142,8 +142,8 @@ func TestLoadAppendFixtures(t *testing.T) {
 	if got := len(ds.GiftTypes); got != 1 {
 		t.Errorf("礼品类型数 = %d, want 1", got)
 	}
-	if got := len(ds.GiftItems); got != 2 {
-		t.Errorf("礼品数 = %d, want 2", got)
+	if got := len(ds.GiftItems); got != 3 {
+		t.Errorf("礼品数 = %d, want 3", got)
 	}
 	if got := len(ds.AccessKeys); got != 0 {
 		t.Errorf("密钥数 = %d, want 0（追加不装载密钥）", got)
@@ -230,10 +230,9 @@ func TestAppendReport(t *testing.T) {
 	report := admin.AppendReport(ds, ex)
 
 	for _, want := range []string{
-		"同行组（新增）: 1", "成员（新增）: 3", "登录名称（新增）: 4", "礼品类型（新增）: 1", "礼品实例（新增）: 2",
-		"cake_card=1", "movie_voucher=1", "G101=1", "G002=1",
+		"同行组（新增）: 1", "成员（新增）: 3", "登录名称（新增）: 4", "礼品类型（新增）: 1", "礼品实例（新增）: 3",
+		"cake_card=2", "movie_voucher=1", "G101=1", "G002=1",
 		"引用既有同行组: G001, G002",
-		"引用既有成员: M006",
 		"引用既有礼品类型: movie_voucher",
 	} {
 		if !strings.Contains(report, want) {

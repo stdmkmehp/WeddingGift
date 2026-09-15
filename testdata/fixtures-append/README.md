@@ -12,9 +12,12 @@
 | 新同行组（追加一个家庭） | G101（周斌 & 吴倩 一家，2 名可登录成员） |
 | 新礼品类型 | cake_card 蛋糕卡（`theme_variant` 留空，复用现有卡片视觉，不改前端） |
 | 新礼品发给新组 | GI101（蛋糕卡，G101 ordinal 1） |
-| 给既有组补成员 | M103 加入 G001（can_login=false，无需登录名称） |
-| 给既有成员加昵称 | M006 加 nickname「小满」（既有成员仅允许 nickname） |
-| 给既有组补发礼品 | GI102（电影券发 G002，ordinal 4 避开库内已占的 1–3；引用既有类型 movie_voucher） |
+| 给既有组补成员 | M103 加入 G001（can_login=true，登录名「卷毛哥哥」与显示名一致） |
+| 给既有组补发礼品 | GI102（电影券发 G001，ordinal 3；G001 库内仅占 1）、GI103（蛋糕卡发 G002，ordinal 4 避开库内已占的 1–3） |
+| 引用既有礼品类型 | GI102 引用既有类型 movie_voucher；GI103 用本批新类型 cake_card——新类型同样可发给既有组 |
+
+说明：ordinal 只需在组内唯一（无连续性要求）。「既有成员仅允许加 nickname」这条规则
+不再由本包演示，改由 `TestAppendConflictRollback/既有成员追加本名` 覆盖。
 
 ## 本地演练
 

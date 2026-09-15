@@ -406,25 +406,31 @@ func TestAppendDatasetEndToEnd(t *testing.T) {
 	assert("成员", stats.Members, 9)
 	assert("登录名称", stats.LoginNames, 13)
 	assert("礼品类型", stats.GiftTypes, 4)
-	assert("礼品", stats.GiftItems, 8)
+	assert("礼品", stats.GiftItems, 9)
 	assert("密钥", stats.AccessKeys, 3) // 追加不触碰密钥
 
-	// 追加后的基线应包含新实体：凭证可解密回明文、ordinal/昵称落位正确。
+	// 追加后的基线应包含新实体：凭证可解密回明文、ordinal/登录名落位正确。
 	after, err := db.LoadExistingState(ctx, testCrypto(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := after.GiftCodePlaintexts["FAKECAKE101"]; got != "GI101" {
-		t.Errorf("FAKECAKE101 -> %q, want GI101", got)
+	for code, wantRef := range map[string]string{
+		"FAKE101": "GI101",
+		"FAKE102": "GI102",
+		"FAKE103": "GI103",
+	} {
+		if got := after.GiftCodePlaintexts[code]; got != wantRef {
+			t.Errorf("凭证 %s -> %q, want %q", code, got, wantRef)
+		}
 	}
-	if got := after.GiftCodePlaintexts["FAKEMOVIE102"]; got != "GI102" {
-		t.Errorf("FAKEMOVIE102 -> %q, want GI102", got)
+	if got := after.OrdinalsByGroup["G001"][3]; got != "GI102" {
+		t.Errorf("G001 ordinal 3 -> %q, want GI102", got)
 	}
-	if got := after.OrdinalsByGroup["G002"][4]; got != "GI102" {
-		t.Errorf("G002 ordinal 4 -> %q, want GI102", got)
+	if got := after.OrdinalsByGroup["G002"][4]; got != "GI103" {
+		t.Errorf("G002 ordinal 4 -> %q, want GI103", got)
 	}
-	if got := after.LoginNameNorms["小满"]; got != "M006/nickname" {
-		t.Errorf("小满 -> %q, want M006/nickname", got)
+	if got := after.LoginNameNorms["卷毛哥哥"]; got != "M103/real_name" {
+		t.Errorf("卷毛哥哥 -> %q, want M103/real_name", got)
 	}
 	if got := after.DisplayNameNorms["周斌"]; got != "M101" {
 		t.Errorf("周斌 -> %q, want M101", got)
@@ -460,7 +466,7 @@ func TestAppendConflictRollback(t *testing.T) {
 			ds.LoginNames = append(ds.LoginNames, domain.LoginNameImport{MemberExternalRef: "M002", Value: "张某", Kind: domain.LoginNameRealName})
 		}, "nickname"},
 		{"ordinal 与库内冲突", func(ds *domain.Dataset) {
-			ds.GiftItems[1].Ordinal = 3 // G002 库内已占 ordinal 3（GI004）
+			ds.GiftItems[2].Ordinal = 3 // GI103 属 G002，库内 GI004 已占 ordinal 3
 		}, "ordinal"},
 	}
 
