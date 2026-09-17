@@ -23,9 +23,6 @@ app.key
 # Playwright CLI 临时产物（页面快照 / 控制台日志，仅本地排查用）
 /.playwright-cli/
 
-# CodeBuddy 本地会话与工作记忆（仅本机，不进 Git）
-/.codebuddy/
-
 # IDE / OS
 .DS_Store
 .idea/
