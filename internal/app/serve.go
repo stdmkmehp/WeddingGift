@@ -15,6 +15,7 @@ import (
 	"github.com/weddinggift/wedding/internal/cryptox"
 	"github.com/weddinggift/wedding/internal/gift"
 	"github.com/weddinggift/wedding/internal/httpx"
+	"github.com/weddinggift/wedding/internal/report"
 	"github.com/weddinggift/wedding/internal/store"
 )
 
@@ -55,10 +56,22 @@ func Serve(cfg Config, logger *slog.Logger) error {
 		logger.Info("expired_sessions_cleaned", slog.Int64("count", n))
 	}
 
+	// 登录失败内存缓冲与进程内日报：SMTP 配置完整才启用；
+	// 未配置时服务照常运行，只是不发日报与溢出告警（缓冲也不记录）。
+	authSvc := auth.New(db, cx)
+	if cfg.SMTP.Enabled() {
+		failLog := report.NewFailureLog(failureLogLimit, failureLogEvict)
+		failLog.OnOverflow = newOverflowHandler(cfg.SMTP, logger)
+		authSvc.SetFailureLog(failLog)
+		startDailyReporter(ctx, db, failLog, cfg.SMTP, cfg.ReportDailyAt, logger)
+	} else {
+		logger.Warn("daily_report_disabled", slog.String("reason", "SMTP 未配置（WEDDING_SMTP_* / WEDDING_MAIL_*）"))
+	}
+
 	srv, err := httpx.New(httpx.Deps{
 		Logger:       logger,
 		DB:           db,
-		Auth:         auth.New(db, cx),
+		Auth:         authSvc,
 		Crypto:       cx,
 		Gift:         gift.New(db, cx),
 		Texts:        cfg.Texts,

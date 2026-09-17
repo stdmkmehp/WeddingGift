@@ -1,8 +1,8 @@
 <!--
 文档名称: WeddingGift 正式环境部署操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v2.6
-日期: 2026-09-14
+版本: v2.8
+日期: 2026-09-17
 状态: 待上机执行（WG-601/602 本地部分已完成）
 依赖文档: docs/03-development-plan.md（M6/WG-603~604）, docs/06-m6-security-review.md, docs/staging-machine-brief.md, docs/04-m0-decisions.md（§2 数据契约）
 -->
@@ -92,7 +92,7 @@ chmod 700 /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/w
 chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ```
 
-### 2.4 生成并放置 app.key（一次性配置）
+### 2.4 生成并放置 app.key 与 smtp.env（一次性配置）
 
 app.key 是应用主秘密（派生密钥 HMAC 与礼品码加密密钥），要求 ≥32 字节熵：
 
@@ -105,6 +105,24 @@ ls -l /data/wedding/secrets/app.key   # 确认 -rw------- 1 65534 65534
 ```
 
 **立即把 app.key 复制到项目所有者的离线位置异位保管**（与真实数据源文件同级）。app.key 丢失则数据库内密钥摘要与礼品密文全部失效，备份也救不回。
+
+smtp.env 是每日统计日报（§6.5）的 SMTP 配置，compose 以 `env_file` 引用注入容器环境（任何 compose 子命令都要求该文件存在，缺失则启动/管理命令全部失败）：
+
+```sh
+# 按实际 SMTP 账号填写（QQ 邮箱示例；授权码不是登录密码，在邮箱设置里单独生成）
+cat > /data/wedding/secrets/smtp.env <<'EOF'
+WEDDING_SMTP_HOST=smtp.qq.com
+WEDDING_SMTP_PORT=465
+WEDDING_SMTP_USER=<发件邮箱>
+WEDDING_SMTP_PASS=<SMTP 授权码>
+WEDDING_MAIL_FROM=<发件邮箱>
+WEDDING_MAIL_TO=<收件邮箱，逗号分隔多个>
+EOF
+chmod 600 /data/wedding/secrets/smtp.env
+chown 65534:65534 /data/wedding/secrets/smtp.env
+```
+
+**smtp.env 同样永不进 Git、离线异位保管**；SMTP 授权码等同于邮箱发送凭据，泄漏后在邮箱设置里重置即可，无需改库。
 
 ### 2.5 构建并传输镜像（开发机 → 正式机）
 
@@ -183,7 +201,7 @@ cp -p /data/conf/nginx/costra.cloud.conf "/data/wedding/nginx/costra.cloud.conf.
 
 若 `nginx -t` 失败：**不要 reload**，用第 1 步备份恢复后重新校验：`cp -p <备份> /data/conf/nginx/costra.cloud.conf && docker exec costra-nginx nginx -t`。
 
-### 2.10 安装备份 cron
+### 2.10 安装备份与日报 cron
 
 ```sh
 # 独立 cron 单元（不动 Costra 的 /etc/cron.d/costra-standby、costra-analyze）
@@ -194,11 +212,16 @@ ops/backup.sh && ops/backup.sh
 ls -lt /data/wedding/backups/ | head -5
 tail -5 /data/wedding/backups/backup.log
 
+# 日报：先 dry-run 核对统计口径（只打印不发送），再实发一次验证 SMTP 链路
+docker compose -p wedding -f deploy/compose.yaml exec -T app /app/wedding report daily --dry-run
+ops/daily-report.sh
+tail -5 /data/wedding/backups/report.log
+
 # 确认 Costra cron 未被触碰
 md5sum /etc/cron.d/costra-standby /etc/cron.d/costra-analyze
 ```
 
-cron 每小时 `:44` 触发，保留最近 72 份（≈3 天）。首次自动备份在下个 `:44` 后确认。
+备份 cron 每小时 `:44` 触发，保留最近 72 份（≈3 天），首次自动备份在下个 `:44` 后确认。日报 cron 每天 `07:17` 触发（与既有高峰任务无冲突），首次自动发送在次日 07:17 后确认收到邮件。
 
 ### 2.11 清理明文源文件
 
@@ -221,6 +244,7 @@ rm -rf /data/wedding/import/*
 | `WEDDING_APP_KEY_PATH` | `/data/wedding/secrets/app.key` | 主秘密路径（只读挂载） |
 | `WEDDING_ALLOWED_HOSTS` | `stg.costra.cloud` | `/api` 的 Host 白名单（逗号分隔） |
 | `WEDDING_COUPLE_NAMES` / `WEDDING_DATE` / `WEDDING_THANKS_MESSAGE` 等 | 见 M0 §3.1 | 页面文案变量 |
+| `WEDDING_SMTP_HOST` / `WEDDING_SMTP_PORT` / `WEDDING_SMTP_USER` / `WEDDING_SMTP_PASS` / `WEDDING_MAIL_FROM` / `WEDDING_MAIL_TO` | 无（端口缺省 465） | 每日统计日报 SMTP 配置；**不在 compose.yaml 中，统一由 `env_file: /data/wedding/secrets/smtp.env` 注入**（§2.4），缺失则 compose 任何子命令报错 |
 
 ### 3.2 容器基线（deploy/compose.yaml 要点，勿随意改动）
 
@@ -467,6 +491,23 @@ rm -rf /data/wedding/append/*
 
 核对要点：dry-run 核对报告中的各类新增数量与「引用既有同行组/成员/礼品类型」清单逐项比对离线事实源；追加后 `status` 计数 = 追加前 + 新增数。校验不过或冲突时数据库零写入，修正离线数据后重跑本流程；已写入但需撤销时按 §6.2 还原追加前备份。
 
+### 6.5 每日统计日报（2026-09-17 起）
+
+每天 `07:17` 由 cron 触发 `ops/daily-report.sh`，统计滚动 24 小时新增的绑定与登录及累积数据（复用 `status` 口径，含未绑定同行组称呼明细），经 SMTP 发送纯文本日报给项目所有者。零 schema 变更，不新增任何表。
+
+- 配置：SMTP 参数统一在 `/data/wedding/secrets/smtp.env`（§2.4），经 compose `env_file` 注入；改配置后 `ops/stop-app.sh && ops/start-app.sh` 重建容器生效。
+- 手动执行 / 排障：
+  ```sh
+  # 只统计并打印邮件内容，不发送（核对口径用）
+  docker compose -p wedding -f deploy/compose.yaml exec -T app /app/wedding report daily --dry-run
+  # 实发一次（验证 SMTP 出网链路；窗口宽度可用 --window 覆盖，默认 24h）
+  ops/daily-report.sh
+  # 日志（成功一行 / 失败错误详情）
+  tail -20 /data/wedding/backups/report.log
+  ```
+- 首次启用（已在线系统升级路径）：创建 smtp.env（§2.4）→ 更新镜像并重建容器（§5，compose `env_file` 要求文件已存在）→ 重新安装 cron 单元（§6.1）→ dry-run 核对 + 实发验证 → 次日 07:17 后确认收到邮件。
+- 失败处理：发送失败只落 `report.log`，不重试补发（次日日报自然反映最新累积数据）；连续失败先 dry-run 区分是统计侧（数据库/schema）还是 SMTP 侧（网络/认证）问题。
+
 ## 7. 回滚预案
 
 | 场景 | 操作 |
@@ -514,6 +555,7 @@ rm -rf /data/wedding/append/*
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.8 | 2026-09-17 | 新增每日统计日报：§6.5 运维小节（口径/手动执行/首次启用升级路径/失败处理）；§2.4 并入 smtp.env 一次性配置（compose `env_file` 注入，永不进 Git）；§2.10 扩展为备份+日报 cron（每天 07:17，dry-run + 实发验证）；§3.1 环境变量表补 SMTP 行；架构侧见 `docs/02-technical-architecture.md` v2.7（§11 `report daily`、§14.3） |
 | v2.7 | 2026-09-15 | 新增 §6.4 在线追加数据流程（`ops/append-data.sh`）：上线后只增不改不删，无需停服——dry-run 复核 → 单事务纯 INSERT → status 核对，配套追加前备份与明文清理；追加数据包走专用目录 `/data/wedding/append`（与首导 `import` 语义分离，§2.3 目录与权限模型同步，compose 增加只读挂载）；§3.3 末尾加追加包指引；§7 回滚预案补追加场景；契约见 `docs/04-m0-decisions.md` v1.3（D-21 + §2.8） |
 | v2.6 | 2026-09-14 | 礼品类型契约修订同步（`docs/04-m0-decisions.md` v1.2）：§3.3 canary 模板中 `travel_annual_card` 改为 `travel_csj_first`；§3.3 核对清单「兑换链接全部 HTTPS」改为「兑换入口为 HTTPS 链接或小程序口令」 |
 | v2.5 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：本地回归改为 README 中列出的显式命令（前端危险 API / 外部资源 / 持久存储与秘密按约定人工 + CR 把关）；§1 前置条件同步；§2.2 自检改为列明只读命令人工核对（不再产出 `ops/records/` 日志）；§4.1 改为 8 组真实 URL 核对命令、§4.2 改为 8 步 canary curl 序列；§3.3/§4.4/§5/§7/§8/§9 同步移除脚本引用 |

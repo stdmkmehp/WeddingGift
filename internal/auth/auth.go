@@ -21,6 +21,7 @@ import (
 
 	"github.com/weddinggift/wedding/internal/cryptox"
 	"github.com/weddinggift/wedding/internal/domain"
+	"github.com/weddinggift/wedding/internal/report"
 	"github.com/weddinggift/wedding/internal/store"
 )
 
@@ -45,11 +46,19 @@ type Service struct {
 	cx *cryptox.Service
 	// now 便于测试注入固定时间；生产为 time.Now。
 	now func() time.Time
+	// failLog 是登录失败的内存缓冲（nil 表示不记录）；由 serve 装配注入，
+	// 供进程内日报与溢出告警使用。不持久化，进程重启即清空。
+	failLog *report.FailureLog
 }
 
 // New 构造鉴权服务。
 func New(db *store.DB, cx *cryptox.Service) *Service {
 	return &Service{db: db, cx: cx, now: time.Now}
+}
+
+// SetFailureLog 注入登录失败内存缓冲；不注入则登录失败不记录。
+func (s *Service) SetFailureLog(l *report.FailureLog) {
+	s.failLog = l
 }
 
 // NewWithClock 是测试用构造：注入固定/可控时钟。
@@ -82,12 +91,17 @@ type GroupPayload struct {
 
 // Login 执行完整登录流程：格式校验 → 摘要 → BEGIN IMMEDIATE 绑定事务 → 会话。
 // keyCode 必须是原始 8 位数字字符串；本函数不修改其内容、不做任何容错裁剪。
+//
+// 所有失败分支在返回前把「失败类别 + 当时输入」写入内存缓冲（若已注入），
+// 供 serve 进程内日报与溢出告警使用；对外错误语义不受记录影响。
 func (s *Service) Login(ctx context.Context, loginName, keyCode string) (*LoginResult, error) {
 	if !domain.IsValidAccessKeyCode(keyCode) {
+		s.recordFailure(ctx, report.FailureInvalidInput, loginName, keyCode, nil)
 		return nil, ErrInvalidInput
 	}
 	norm := domain.NormalizeLoginName(loginName)
 	if norm == "" || utf8.RuneCountInString(norm) > domain.MaxNameLen {
+		s.recordFailure(ctx, report.FailureInvalidInput, loginName, keyCode, s.cx.AccessKeyDigest(keyCode))
 		return nil, ErrInvalidInput
 	}
 
@@ -98,17 +112,25 @@ func (s *Service) Login(ctx context.Context, loginName, keyCode string) (*LoginR
 	now := s.now().UTC()
 	expiresAt := now.Add(SessionTTL)
 
+	keyDigest := s.cx.AccessKeyDigest(keyCode)
 	outcome, reason, err := s.db.LoginWithCredentials(ctx, norm,
-		s.cx.AccessKeyDigest(keyCode), cryptox.SessionTokenDigest(token),
+		keyDigest, cryptox.SessionTokenDigest(token),
 		expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 	if err != nil {
 		return nil, err
 	}
 	if outcome == nil {
-		if reason == store.LoginDenyKeyBoundElsewhere {
+		switch reason {
+		case store.LoginDenyKeyBoundElsewhere:
+			s.recordFailure(ctx, report.FailureKeyBoundElsewhere, loginName, keyCode, keyDigest)
 			return nil, ErrKeyBoundElsewhere
+		case store.LoginDenyNameUnknown:
+			s.recordFailure(ctx, report.FailureNameUnknown, loginName, keyCode, keyDigest)
+			return nil, ErrInvalidCredentials
+		default: // store.LoginDenyKeyUnknown
+			s.recordFailure(ctx, report.FailureKeyUnknown, loginName, keyCode, keyDigest)
+			return nil, ErrInvalidCredentials
 		}
-		return nil, ErrInvalidCredentials
 	}
 
 	group, err := s.groupPayload(ctx, outcome.GroupID, outcome.GroupSalutation, outcome.GroupCustomMessage, expiresAt)
@@ -172,4 +194,35 @@ func (s *Service) groupPayload(ctx context.Context, groupID, salutation, customM
 		ExpiresAt:     expiresAt,
 		Gifts:         gifts,
 	}, nil
+}
+
+// recordFailure 把一次登录失败写入内存缓冲（未注入缓冲或记录失败时静默
+// 跳过——失败记录是辅助能力，绝不能反过来影响登录响应）。
+//
+// 记录内容为：失败类别、用户输入的原始名字、输入密钥的掩码（永不保存明文），
+// 以及尽力而为的归属注解——名字对应的同行组、输入密钥摘要命中的真实密钥
+// 及其已绑定同行组（keyDigest 为 nil 表示输入密钥格式非法，不做摘要查询）。
+func (s *Service) recordFailure(ctx context.Context, outcome, loginName, keyCode string, keyDigest []byte) {
+	if s.failLog == nil {
+		return
+	}
+	f := report.LoginFailure{
+		At:        s.now().UTC(),
+		Outcome:   outcome,
+		NameInput: loginName,
+		KeyMasked: report.MaskKeyInput(keyCode),
+	}
+	if groupRef, salutation, ok, err := s.db.GroupSalutationByLoginName(ctx, domain.NormalizeLoginName(loginName)); err == nil && ok {
+		f.NameGroup = groupRef + " " + salutation
+	}
+	if keyDigest != nil {
+		f.KeyLookedUp = true
+		if ref, boundRef, boundSalutation, ok, err := s.db.LookupAccessKeyByDigest(ctx, keyDigest); err == nil && ok {
+			f.KeyRef = ref
+			if boundRef != "" {
+				f.KeyBoundGroup = boundRef + " " + boundSalutation
+			}
+		}
+	}
+	s.failLog.Add(f)
 }

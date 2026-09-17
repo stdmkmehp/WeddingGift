@@ -60,10 +60,10 @@ func TestBindingDecisionMatrix(t *testing.T) {
 	importFixtures(t, db, ctx)
 	cx := testCrypto(t)
 
-	// 无效名称 + 任意密钥：统一模糊失败。
-	mustDenyLogin(t, db, cx, "不存在的人", "20260001", store.LoginDenyGeneric)
-	// 有效名称 + 不存在的密钥摘要：统一模糊失败。
-	mustDenyLogin(t, db, cx, "王芳", "99999999", store.LoginDenyGeneric)
+	// 无效名称 + 任意密钥：名称无匹配（对外仍统一模糊失败）。
+	mustDenyLogin(t, db, cx, "不存在的人", "20260001", store.LoginDenyNameUnknown)
+	// 有效名称 + 不存在的密钥摘要：密钥无匹配（对外仍统一模糊失败）。
+	mustDenyLogin(t, db, cx, "王芳", "99999999", store.LoginDenyKeyUnknown)
 
 	// 首次绑定：本名成功。
 	out := mustLogin(t, db, cx, "王芳", "20260001")
@@ -107,7 +107,7 @@ func TestBindingDecisionMatrix(t *testing.T) {
 
 	// 带娃组：可登录成员登录，can_login=false 的儿童没有登录名称。
 	mustLogin(t, db, cx, "陈强", "20260003")
-	mustDenyLogin(t, db, cx, "陈小满", "20260003", store.LoginDenyGeneric)
+	mustDenyLogin(t, db, cx, "陈小满", "20260003", store.LoginDenyNameUnknown)
 }
 
 // TestConcurrentBindingContention 验证 §8.2 不变量：两个请求争抢同一密钥时
@@ -168,18 +168,18 @@ func TestLoginRejectsDisabledStates(t *testing.T) {
 	importFixtures(t, db, ctx)
 	cx := testCrypto(t)
 
-	// 停用密钥 K001：登录失败。
+	// 停用密钥 K001：登录失败（密钥维度无 active 匹配）。
 	if _, err := db.RevokeAccessKey(ctx, "K001"); err != nil {
 		t.Fatal(err)
 	}
-	mustDenyLogin(t, db, cx, "王芳", "20260001", store.LoginDenyGeneric)
+	mustDenyLogin(t, db, cx, "王芳", "20260001", store.LoginDenyKeyUnknown)
 
-	// 停用组 G003：成员登录失败。
+	// 停用组 G003：成员登录失败（名称维度无 active 组匹配）。
 	if _, err := db.ExecContext(ctx,
 		"UPDATE recipient_group SET status = 'disabled' WHERE external_ref = 'G003'"); err != nil {
 		t.Fatal(err)
 	}
-	mustDenyLogin(t, db, cx, "陈强", "20260003", store.LoginDenyGeneric)
+	mustDenyLogin(t, db, cx, "陈强", "20260003", store.LoginDenyNameUnknown)
 }
 
 // TestSessionLifecycle 会话的创建、解析、过期、删除与批量清理。

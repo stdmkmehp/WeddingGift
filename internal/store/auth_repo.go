@@ -66,14 +66,19 @@ type LoginOutcome struct {
 
 // LoginDenyReason 是业务层面鉴权失败的原因分类，仅当 LoginWithCredentials
 // 返回的 *LoginOutcome 为 nil 时有意义。
+//
+// NameUnknown 与 KeyUnknown 的区分仅供内部记录（登录失败内存缓冲与日报）；
+// HTTP 层必须把它们归一为统一模糊错误，不得向外区分。
 type LoginDenyReason int
 
 const (
 	// LoginDenyNone 表示未拒绝（登录成功）。
 	LoginDenyNone LoginDenyReason = iota
-	// LoginDenyGeneric 是统一模糊失败：名称无效、密钥无效或已停用，
-	// 调用方不得向外部区分具体原因。
-	LoginDenyGeneric
+	// LoginDenyNameUnknown 是登录名称无匹配（含成员不可登录、组已停用）；
+	// 对外统一模糊失败。
+	LoginDenyNameUnknown
+	// LoginDenyKeyUnknown 是密钥摘要无匹配或已停用；对外统一模糊失败。
+	LoginDenyKeyUnknown
 	// LoginDenyKeyBoundElsewhere 表示名称与密钥各自有效，但密钥已绑定
 	// 其他同行组（多为他人冒用名称提前绑定）。该状态对外明确可见，
 	// 便于持卡本人联系新郎人工处理（2026-09-13 产品决策调整）。
@@ -107,7 +112,7 @@ func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, ke
 		normalizedName,
 	).Scan(&memberGroupID, &salutation, &customMessage)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, LoginDenyGeneric, nil
+		return nil, LoginDenyNameUnknown, nil
 	}
 	if err != nil {
 		return nil, LoginDenyNone, fmt.Errorf("解析登录名称失败: %w", err)
@@ -122,7 +127,7 @@ func (d *DB) LoginWithCredentials(ctx context.Context, normalizedName string, ke
 		keyDigest,
 	).Scan(&keyID, &keyRef, &keyGroupID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, LoginDenyGeneric, nil
+		return nil, LoginDenyKeyUnknown, nil
 	}
 	if err != nil {
 		return nil, LoginDenyNone, fmt.Errorf("查询密钥失败: %w", err)

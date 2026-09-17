@@ -13,5 +13,9 @@
 #
 # 输出纪律：备份日志追加到 /data/wedding/backups/backup.log（目录收束约定，
 # 不落地到其他位置）；失败仅本机可查，不建设外部告警（技术架构 §14.2）。
+#
+# 注意：每日统计日报不走 cron——登录失败明细只在 serve 进程内存中，
+# 独立进程读不到，因此日报由 serve 进程内调度发送（默认每天北京时间 07:17，
+# 技术架构 §14.3）；本单元只保留备份任务。
 
 44 * * * * root /root/WeddingGift/ops/backup.sh >> /data/wedding/backups/backup.log 2>&1

@@ -12,8 +12,14 @@
 //	wedding status                         输出脱敏统计（内部编号与数量，不含明文）
 //	wedding key revoke --ref <card-ref>    停用密钥并删除其会话
 //	wedding backup create --output <path>  SQLite online backup 一致性备份
+//	wedding report daily [--dry-run] [--window 24h]  纯统计版日报（人工验证口径与 SMTP）
+//
+// 正式每日日报由 serve 进程内调度发送（统计 + 登录失败内存明细），不走 cron/CLI。
 //
 // 日志与输出纪律：不打印姓名、昵称、明文密钥、明文礼品码、Cookie 或请求正文。
+// 例外：日报/告警邮件正文含同行组称呼与登录失败的输入名字——收件人即项目
+// 所有者本人（管理员），邮件不经过日志；内存缓冲中密钥只存掩码；
+// 其余 stdout/stderr 输出仍遵守上述纪律。
 package main
 
 import (
@@ -21,6 +27,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/weddinggift/wedding/internal/admin"
@@ -28,6 +35,7 @@ import (
 	"github.com/weddinggift/wedding/internal/buildinfo"
 	"github.com/weddinggift/wedding/internal/cryptox"
 	"github.com/weddinggift/wedding/internal/domain"
+	"github.com/weddinggift/wedding/internal/report"
 	"github.com/weddinggift/wedding/internal/store"
 )
 
@@ -63,6 +71,8 @@ func main() {
 		os.Exit(runKey(cfg, os.Args[2:]))
 	case "backup":
 		os.Exit(runBackup(cfg, os.Args[2:]))
+	case "report":
+		os.Exit(runReport(cfg, os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -337,6 +347,52 @@ func runBackup(cfg app.Config, args []string) int {
 	return 0
 }
 
+// runReport 处理 report daily：收集滚动窗口（默认最近 24 小时）新增的绑定与
+// 登录及累积数据，渲染纯文本统计版日报邮件。--dry-run 只统计并打印不发送；
+// 发送要求已通过 WEDDING_SMTP_* / WEDDING_MAIL_* 完整配置 SMTP。
+//
+// 定位：本命令是统计口径与 SMTP 链路的人工验证工具。正式的每日日报由 serve
+// 进程内调度发送（含登录失败明细）——失败缓冲只存在于 serve 进程内存，
+// 本独立进程不可见，因此 CLI 渲染纯统计版并如实注明。
+func runReport(cfg app.Config, args []string) int {
+	if len(args) < 1 || args[0] != "daily" {
+		fmt.Fprintln(os.Stderr, "用法: wedding report daily [--dry-run] [--window 24h]")
+		return 2
+	}
+	fs := flag.NewFlagSet("report daily", flag.ContinueOnError)
+	dryRun := fs.Bool("dry-run", false, "只统计并打印邮件内容，不发送")
+	window := fs.Duration("window", 24*time.Hour, "滚动统计窗口宽度")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+
+	db, ctx, cancel, err := openStore(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "report daily 失败:", err)
+		return 1
+	}
+	defer db.Close()
+	defer cancel()
+
+	summary, err := report.Collect(ctx, db, time.Now(), *window)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "report daily 失败:", err)
+		return 1
+	}
+	subject, body := report.RenderDailyStatsOnly(summary)
+
+	if *dryRun {
+		fmt.Printf("Subject: %s\n\n%s", subject, body)
+		return 0
+	}
+	if err := report.SendMail(ctx, cfg.SMTP, subject, body); err != nil {
+		fmt.Fprintln(os.Stderr, "report daily 失败:", err)
+		return 1
+	}
+	fmt.Printf("日报已发送：%s → %s\n", subject, strings.Join(cfg.SMTP.To, ", "))
+	return 0
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `wedding — WeddingGift 单二进制入口
 
@@ -351,12 +407,22 @@ func usage() {
   wedding status                         输出脱敏统计
   wedding key revoke --ref <ref>         停用密钥并删除其会话
   wedding backup create --output <path>  SQLite online backup 一致性备份
+  wedding report daily [--dry-run] [--window 24h]
+                                         纯统计版日报（人工验证口径与 SMTP 链路；
+                                         正式日报由 serve 进程内调度发送）
 
 环境变量:
   WEDDING_LISTEN_ADDR    HTTP 监听地址，默认 ":3000"
   WEDDING_DB_PATH        SQLite 数据库路径，默认 "/data/wedding/data/wedding.db"
   WEDDING_APP_KEY_PATH   app.key 路径，默认 "/data/wedding/secrets/app.key"
   WEDDING_ALLOWED_HOSTS  /api 接受的 Host 白名单（逗号分隔），默认 "stg.costra.cloud"
+  WEDDING_SMTP_HOST      日报 SMTP 服务器（如 smtp.qq.com），为空则 serve 不启动日报调度
+  WEDDING_SMTP_PORT      日报 SMTP 端口，默认 465（SSL 直连；其他端口走 STARTTLS）
+  WEDDING_SMTP_USER      日报 SMTP 认证用户名
+  WEDDING_SMTP_PASS      日报 SMTP 认证密码/授权码（秘密，经 smtp.env 注入）
+  WEDDING_MAIL_FROM      日报发件地址
+  WEDDING_MAIL_TO        日报收件地址（逗号分隔多个）
+  WEDDING_REPORT_DAILY_AT  serve 进程内日报的北京时间发送时刻（HH:MM），默认 "07:17"
   WEDDING_*文案变量       WEDDING_COUPLE_NAMES / WEDDING_DATE / WEDDING_THANKS_MESSAGE 等（M0 §3.1）
 `)
 }

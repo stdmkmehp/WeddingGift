@@ -3,9 +3,11 @@ package app
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/weddinggift/wedding/internal/httpx"
+	"github.com/weddinggift/wedding/internal/report"
 )
 
 // Config 是从环境变量读取的运行配置。
@@ -21,6 +23,12 @@ type Config struct {
 	// Texts 是 M0 §3.1 冻结的文案字段（新人称呼与婚期已定稿为默认值，
 	// 其余仍为占位默认，真实文案上线前用环境变量覆盖）。
 	Texts httpx.Texts
+	// SMTP 是每日统计日报与登录失败告警的发送配置；未完整配置时 serve
+	// 不启动进程内日报调度，CLI report daily 仅 --dry-run 可用。
+	// 秘密值由宿主机 /data/wedding/secrets/smtp.env 注入。
+	SMTP report.SMTPConfig
+	// ReportDailyAt 是 serve 进程内日报的北京时间发送时刻（"HH:MM"）。
+	ReportDailyAt string
 }
 
 // LoadConfig 从环境变量读取配置并填充默认值。
@@ -43,6 +51,15 @@ func LoadConfig() Config {
 			IcpFilingURL:    envOr("WEDDING_ICP_FILING_URL", "https://beian.miit.gov.cn/"),
 			MaintenanceText: envOr("WEDDING_MAINTENANCE_TEXT", "页面维护中，请稍后再试。"),
 		},
+		SMTP: report.SMTPConfig{
+			Host: os.Getenv("WEDDING_SMTP_HOST"),
+			Port: envIntOr("WEDDING_SMTP_PORT", 465),
+			User: os.Getenv("WEDDING_SMTP_USER"),
+			Pass: os.Getenv("WEDDING_SMTP_PASS"),
+			From: os.Getenv("WEDDING_MAIL_FROM"),
+			To:   splitAndTrim(os.Getenv("WEDDING_MAIL_TO")),
+		},
+		ReportDailyAt: envOr("WEDDING_REPORT_DAILY_AT", "07:17"),
 	}
 }
 
@@ -59,6 +76,16 @@ func (c Config) HealthAddr() string {
 func envOr(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		return v
+	}
+	return fallback
+}
+
+// envIntOr 读取整数型环境变量；未设置或无法解析时返回默认值。
+func envIntOr(key string, fallback int) int {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
 	}
 	return fallback
 }

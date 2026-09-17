@@ -294,6 +294,34 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 	return s, nil
 }
 
+// WindowStats 是滚动时间窗口内的新增统计（report daily 子命令用）。
+type WindowStats struct {
+	// Bindings 是窗口内新绑定的密钥数（access_key.bound_at 落入区间）。
+	Bindings int
+	// Logins 是窗口内成功登录创建会话的次数（session.created_at 落入区间）。
+	Logins int
+}
+
+// WindowStats 统计 [since, until) 内的新增绑定数与登录次数。
+// 边界为 UTC RFC3339 文本：库内时间列统一该格式存储，字典序即时间序，
+// 区间比较可直接在文本列上进行。
+func (d *DB) WindowStats(ctx context.Context, since, until string) (*WindowStats, error) {
+	w := &WindowStats{}
+	if err := d.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM access_key
+		WHERE bound_at IS NOT NULL AND bound_at >= ? AND bound_at < ?`,
+		since, until).Scan(&w.Bindings); err != nil {
+		return nil, fmt.Errorf("统计窗口绑定数失败: %w", err)
+	}
+	if err := d.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM session
+		WHERE created_at >= ? AND created_at < ?`,
+		since, until).Scan(&w.Logins); err != nil {
+		return nil, fmt.Errorf("统计窗口登录数失败: %w", err)
+	}
+	return w, nil
+}
+
 // normalizeTypeKeys 把 GROUP_CONCAT 的原始结果（逗号无空格、聚合顺序不保证）
 // 规范化为稳定有序、便于阅读的 "a, b, c"；空输入原样返回空串。
 func normalizeTypeKeys(raw string) string {

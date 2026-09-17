@@ -13,6 +13,7 @@ import (
 	"github.com/weddinggift/wedding/internal/auth"
 	"github.com/weddinggift/wedding/internal/cryptox"
 	"github.com/weddinggift/wedding/internal/domain"
+	"github.com/weddinggift/wedding/internal/report"
 	"github.com/weddinggift/wedding/internal/store"
 )
 
@@ -240,5 +241,81 @@ func TestRevokedKeyInvalidatesSession(t *testing.T) {
 	}
 	if _, err := svc.Login(ctx, "王芳", "20260001"); !errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Errorf("停用密钥再登录应统一失败，实际 %v", err)
+	}
+}
+
+// TestLoginFailureRecording 登录失败写入内存缓冲：类别、原始输入、掩码与
+// 归属注解齐全；成功登录不记录；未注入缓冲时登录流程不受影响。
+func TestLoginFailureRecording(t *testing.T) {
+	ctx, _, svc, _, _ := newEnv(t)
+	log := report.NewFailureLog(100, 50)
+	svc.SetFailureLog(log)
+
+	// 成功登录不记录。
+	if _, err := svc.Login(ctx, "王芳", "20260001"); err != nil {
+		t.Fatal(err)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("成功登录不应记录，实际 %d 条", log.Len())
+	}
+
+	// 密钥已绑定其他同行组：注解应同时识别名字归属与密钥已绑组。
+	if _, err := svc.Login(ctx, "张伟", "20260001"); !errors.Is(err, auth.ErrKeyBoundElsewhere) {
+		t.Fatalf("应返回 ErrKeyBoundElsewhere: %v", err)
+	}
+	// 名字无效：密钥注解应识别出有效未绑定密钥。
+	if _, err := svc.Login(ctx, "不存在的人", "20260002"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("应返回 ErrInvalidCredentials: %v", err)
+	}
+	// 密钥无效：名字注解应识别归属组。
+	if _, err := svc.Login(ctx, "李娜", "99999999"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("应返回 ErrInvalidCredentials: %v", err)
+	}
+	// 格式非法（密钥非 8 位数字）：不做摘要归属查询。
+	if _, err := svc.Login(ctx, "王芳", "1234"); !errors.Is(err, auth.ErrInvalidInput) {
+		t.Fatalf("应返回 ErrInvalidInput: %v", err)
+	}
+
+	items := log.Snapshot()
+	if len(items) != 4 {
+		t.Fatalf("应记录 4 条失败，实际 %d", len(items))
+	}
+
+	bound := items[0]
+	if bound.Outcome != report.FailureKeyBoundElsewhere ||
+		bound.NameInput != "张伟" || bound.NameGroup != "G002 张伟 & 李娜 一家" ||
+		bound.KeyMasked != "20****01" || !bound.KeyLookedUp ||
+		bound.KeyRef != "K001" || bound.KeyBoundGroup != "G001 王芳" {
+		t.Errorf("跨组绑定失败记录不对: %+v", bound)
+	}
+
+	nameUnknown := items[1]
+	if nameUnknown.Outcome != report.FailureNameUnknown ||
+		nameUnknown.NameInput != "不存在的人" || nameUnknown.NameGroup != "" ||
+		nameUnknown.KeyMasked != "20****02" || !nameUnknown.KeyLookedUp ||
+		nameUnknown.KeyRef != "K002" || nameUnknown.KeyBoundGroup != "" {
+		t.Errorf("名字无效记录不对: %+v", nameUnknown)
+	}
+
+	keyUnknown := items[2]
+	if keyUnknown.Outcome != report.FailureKeyUnknown ||
+		keyUnknown.NameInput != "李娜" || keyUnknown.NameGroup != "G002 张伟 & 李娜 一家" ||
+		keyUnknown.KeyMasked != "99****99" || !keyUnknown.KeyLookedUp || keyUnknown.KeyRef != "" {
+		t.Errorf("密钥无效记录不对: %+v", keyUnknown)
+	}
+
+	invalid := items[3]
+	if invalid.Outcome != report.FailureInvalidInput ||
+		invalid.KeyMasked != "****" || invalid.KeyLookedUp {
+		t.Errorf("格式非法记录不对: %+v", invalid)
+	}
+	if invalid.KeyMasked == "1234" {
+		t.Error("掩码不应包含原始输入")
+	}
+
+	// 未注入缓冲（nil）：失败登录语义不变、不 panic。
+	svc.SetFailureLog(nil)
+	if _, err := svc.Login(ctx, "不存在的人", "20260002"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Errorf("未注入缓冲时登录失败语义不变，实际 %v", err)
 	}
 }
