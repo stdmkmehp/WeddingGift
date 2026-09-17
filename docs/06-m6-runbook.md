@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 正式环境部署操作手册
 文档类型: 运维操作手册 / 里程碑记录
-版本: v2.10
+版本: v2.11
 日期: 2026-09-17
 状态: 待上机执行（WG-601/602 本地部分已完成）
 依赖文档: docs/03-development-plan.md（M6/WG-603~604）, docs/06-m6-security-review.md, docs/staging-machine-brief.md, docs/04-m0-decisions.md（§2 数据契约）
@@ -106,7 +106,7 @@ ls -l /data/wedding/secrets/app.key   # 确认 -rw------- 1 65534 65534
 
 **立即把 app.key 复制到项目所有者的离线位置异位保管**（与真实数据源文件同级）。app.key 丢失则数据库内密钥摘要与礼品密文全部失效，备份也救不回。
 
-smtp.env 是每日统计日报（§6.5）的 SMTP 配置，**由应用运行时主动读取**（随 secrets 目录只读挂载进容器，与 app.key 同一模式；真实环境变量优先、文件补缺）。文件缺失仅日报与登录失败告警不启用、服务照常运行；存在但格式非法则启动报错：
+smtp.env 是每日统计日报（§6.5）的 SMTP 配置，**由应用运行时主动读取**（随 secrets 目录只读挂载进容器，与 app.key 同一模式；真实环境变量优先、文件补缺）。文件缺失仅日报与登录失败告警不启用、服务照常运行；文件存在但不可读或格式/端口非法时 serve 记 `smtp_config_invalid` 警告并禁用日报（不阻塞站点），CLI 发送时报错。注意属主必须是 **65534**（容器内进程非 root，`0600 root:root` 会导致 permission denied）：
 
 ```sh
 # 按实际 SMTP 账号填写（QQ 邮箱示例；授权码不是登录密码，在邮箱设置里单独生成）
@@ -506,6 +506,7 @@ rm -rf /data/wedding/append/*
   ```
 - 首次启用（已在线系统升级路径）：创建 smtp.env（§2.4）→ 更新镜像并重建容器（§5）→ dry-run 核对 + CLI 实发验证 SMTP → 启动日志确认 `daily_report_scheduled` → 次日 07:17 后确认收到含失败明细节的日报。
 - 失败处理：日报发送失败只记 `daily_report_failed` 日志并次日重试（缓冲不清空）；连续失败先用 CLI dry-run 区分统计侧（数据库/schema）还是 SMTP 侧（网络/认证）问题。重启会清空失败缓冲（统计数据在库内不受影响）。
+- 排障：启动日志出现 `smtp_config_invalid`（如 `permission denied`）说明 smtp.env 存在但容器读不到或内容非法——先核对属主与权限（`ls -l /data/wedding/secrets/smtp.env` 应为 `-rw------- 1 65534 65534`，不对则 `chown 65534:65534` + `chmod 600` 后 `docker restart wedding-app`），再核对文件内容为 `KEY=VALUE` 逐行格式。服务本身不受该警告影响。
 
 ## 7. 回滚预案
 
@@ -554,6 +555,7 @@ rm -rf /data/wedding/append/*
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.11 | 2026-09-17 | SMTP 配置容错修正：§2.4 强调 smtp.env 属主必须 65534（`0600 root:root` 实测导致容器 EACCES），§6.5 补 `smtp_config_invalid` 排障；配置问题降级为警告+禁用日报，不再阻塞 serve；架构侧见 `docs/02-technical-architecture.md` v2.10 |
 | v2.10 | 2026-09-17 | SMTP 配置改为应用运行时主动读取：§2.4 smtp.env 说明（环境变量优先、文件补缺，缺失仅日报不启用）、§3.1 表补 `WEDDING_SMTP_ENV_PATH`、§6.5 同步；移除 compose `env_file`（构建/执行机不再要求持有该文件）；架构侧见 `docs/02-technical-architecture.md` v2.9 |
 | v2.9 | 2026-09-17 | 日报改为 serve 进程内调度并新增登录失败内存记录：§6.5 重写（失败缓冲 100 上限/溢出告警清 50/日报成功才清空、重启即丢的语义，验证改走 CLI dry-run + 实发与容器事件日志）；§2.10 回归纯备份 cron；架构侧见 `docs/02-technical-architecture.md` v2.8（ADR-014、§14.3） |
 | v2.8 | 2026-09-17 | 新增每日统计日报：§6.5 运维小节（口径/手动执行/首次启用升级路径/失败处理）；§2.4 并入 smtp.env 一次性配置（compose `env_file` 注入，永不进 Git）；§3.1 环境变量表补 SMTP 行；架构侧见 `docs/02-technical-architecture.md` v2.7（§11 `report daily`、§14.3） |

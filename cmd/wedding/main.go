@@ -26,6 +26,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -45,15 +46,17 @@ func main() {
 		os.Exit(2)
 	}
 
-	cfg, err := app.LoadConfig()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "配置加载失败:", err)
-		os.Exit(1)
-	}
+	// cfgErr 仅为 SMTP 配置加载问题（文件不可读/格式非法）：日报是可选能力，
+	// 绝不允许它阻塞 serve 对外服务——serve 记警告并禁用日报；
+	// report daily 发送时才以该错误失败退出；其余子命令不受影响。
+	cfg, cfgErr := app.LoadConfig()
 
 	switch os.Args[1] {
 	case "serve":
 		logger := app.NewLogger()
+		if cfgErr != nil {
+			logger.Warn("smtp_config_invalid", slog.String("error", cfgErr.Error()))
+		}
 		if err := app.Serve(cfg, logger); err != nil {
 			logger.Error("server_error", "error", err.Error())
 			os.Exit(1)
@@ -76,7 +79,7 @@ func main() {
 	case "backup":
 		os.Exit(runBackup(cfg, os.Args[2:]))
 	case "report":
-		os.Exit(runReport(cfg, os.Args[2:]))
+		os.Exit(runReport(cfg, cfgErr, os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -358,7 +361,7 @@ func runBackup(cfg app.Config, args []string) int {
 // 定位：本命令是统计口径与 SMTP 链路的人工验证工具。正式的每日日报由 serve
 // 进程内调度发送（含登录失败明细）——失败缓冲只存在于 serve 进程内存，
 // 本独立进程不可见，因此 CLI 渲染纯统计版并如实注明。
-func runReport(cfg app.Config, args []string) int {
+func runReport(cfg app.Config, cfgErr error, args []string) int {
 	if len(args) < 1 || args[0] != "daily" {
 		fmt.Fprintln(os.Stderr, "用法: wedding report daily [--dry-run] [--window 24h]")
 		return 2
@@ -368,6 +371,13 @@ func runReport(cfg app.Config, args []string) int {
 	window := fs.Duration("window", 24*time.Hour, "滚动统计窗口宽度")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
+	}
+	// SMTP 配置加载失败：dry-run 仅提示（统计与 SMTP 无关）；发送时必须失败退出。
+	if cfgErr != nil {
+		fmt.Fprintln(os.Stderr, "SMTP 配置警告:", cfgErr)
+		if !*dryRun {
+			return 1
+		}
 	}
 
 	db, ctx, cancel, err := openStore(cfg)

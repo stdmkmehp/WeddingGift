@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v2.9
+版本: v2.10
 日期: 2026-09-17
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -589,7 +589,7 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 
 **登录失败内存记录（不持久化）**：所有登录失败分支（输入格式不正确、名字无匹配、密钥无匹配/已停用、密钥已绑定其他同行组）在返回前写入内存环形缓冲，内容为失败类别、用户输入的原始名字、输入密钥的**掩码**（首尾各 2 字符，如 `12****78`，永不保存明文与完整摘要外的信息）及归属注解（名字对应的同行组、输入密钥摘要命中的真实密钥 external_ref 及其已绑组称呼）。缓冲**上限 100 条**：插入第 101 条时立即异步发送「登录失败告警」邮件（含当前全部条目），随后清理最早 50 条，保证最新失败始终可记录。日报**发送成功后才清空缓冲**——每条失败只在一封日报里汇报；发送失败保留到次日重试。**进程重启/崩溃缓冲即清空，项目所有者明确接受该丢失风险**（非关键数据）。
 
-- SMTP 配置（`WEDDING_SMTP_HOST` / `WEDDING_SMTP_PORT` / `WEDDING_SMTP_USER` / `WEDDING_SMTP_PASS` / `WEDDING_MAIL_FROM` / `WEDDING_MAIL_TO`）存于宿主机 `/data/wedding/secrets/smtp.env`（`0600`、属主 65534，与 `app.key` 同目录模型），**由应用运行时主动读取**（随 secrets 只读挂载进容器；真实环境变量优先、文件补缺，`WEDDING_SMTP_ENV_PATH` 可覆盖路径）；**秘密值不进 Git**，仓库只出现文件路径。不经 compose `env_file` 注入——镜像构建机与 compose 执行机都不必持有该文件；文件缺失仅日报与告警不启用（`deploy-app.sh` 只提示，serve 照常运行），存在但格式非法则启动报错。
+- SMTP 配置（`WEDDING_SMTP_HOST` / `WEDDING_SMTP_PORT` / `WEDDING_SMTP_USER` / `WEDDING_SMTP_PASS` / `WEDDING_MAIL_FROM` / `WEDDING_MAIL_TO`）存于宿主机 `/data/wedding/secrets/smtp.env`（`0600`、属主 65534，与 `app.key` 同目录模型），**由应用运行时主动读取**（随 secrets 只读挂载进容器；真实环境变量优先、文件补缺，`WEDDING_SMTP_ENV_PATH` 可覆盖路径）；**秘密值不进 Git**，仓库只出现文件路径。不经 compose `env_file` 注入——镜像构建机与 compose 执行机都不必持有该文件。容错语义（2026-09-17 修正）：**可选配置问题绝不阻塞站点**——文件缺失即未配置；文件存在但不可读（如属主误为 root 的 `0600`，容器 65534 读不到）或格式/端口非法时，serve 记 `smtp_config_invalid` 警告并禁用日报继续对外服务，`report daily` 发送时才以该错误失败退出（dry-run 仅提示）。
 - 邮件正文含同行组称呼与失败输入名字（收件人即项目所有者本人，属管理员自用运营数据）；日报与告警不经应用日志，正文不写 stdout——进程内只记 `daily_report_scheduled` / `daily_report_sent` / `daily_report_failed` / `login_failure_alert_sent` / `login_failure_alert_failed` 事件日志（不含邮件内容）。
 - 发送失败只落本机日志，不建设外部告警平台（溢出告警邮件本身即最小告警）；次日日报自然反映最新累积数据。首次启用用 `report daily --dry-run` 核对统计口径、再实发一次验证 SMTP 出网链路（CLI 为纯统计版，见 §11）。
 - cron 单元 `/etc/cron.d/wedding` 只保留备份任务（§14.1），不承担日报。
@@ -738,6 +738,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.10 | 2026-09-17 | SMTP 配置容错修正（§14.3）：文件不可读/格式非法不再导致进程退出——`LoadConfig` 连同完整可用配置返回错误，serve 记 `smtp_config_invalid` 警告并禁用日报继续服务，`report daily` 发送时失败退出、dry-run 仅提示；起因是上机 `0600 root:root` 的 smtp.env 使容器 65534 读出 EACCES、serve 无法启动（即时修复：文件 `chown 65534:65534`） |
 | v2.9 | 2026-09-17 | SMTP 配置加载改为应用运行时主动读取：移除 compose `env_file`（镜像构建机/compose 执行机不再要求持有 smtp.env），环境变量优先、`/data/wedding/secrets/smtp.env` 文件补缺（`WEDDING_SMTP_ENV_PATH` 可覆盖），文件缺失仅日报不启用、格式非法启动报错；`deploy-app.sh` 前置报错降级为提示；§13.1/§14.3 同步 |
 | v2.8 | 2026-09-17 | 日报架构改为 serve 进程内调度（ADR-014、§14.3）：新增登录失败内存记录（上限 100、溢出即告警邮件并清最早 50、密钥只存掩码、归属注解富化），日报含全部失败明细且发送成功才清空缓冲；日报不再走 cron（`ops/daily-report.sh` 撤除，cron 单元回归只保留备份），CLI `report daily` 重新定位为统计口径与 SMTP 链路的人工验证工具（纯统计版）；`store.LoginDenyGeneric` 拆分为名称/密钥两类内部原因（对外仍统一模糊），新增 `WEDDING_REPORT_DAILY_AT`（默认 `07:17`）；零 schema 变更不变 |
 | v2.7 | 2026-09-17 | 新增每日统计日报（§11 `report daily`、§14.3）：滚动 24 小时窗口统计新增绑定/登录 + 累积数据（复用 `Stats`，零 schema 变更），经 SMTP（465 SSL / STARTTLS）发送纯文本邮件给项目所有者，含未绑定同行组称呼明细（收件人即管理员，不做脱敏）；SMTP 配置走 `/data/wedding/secrets/smtp.env` + compose `env_file`（不进 Git）；上机流程见 06 runbook §6.5 |

@@ -121,3 +121,40 @@ func TestLoadSMTPConfigBadPort(t *testing.T) {
 		t.Errorf("非法端口应报错，实际 %v", err)
 	}
 }
+
+// TestLoadSMTPEnvFilePermissionDenied 文件存在但不可读应返回权限错误
+// （与文件缺失的"未配置"语义区分——这是配置错误，必须可诊断）。
+func TestLoadSMTPEnvFilePermissionDenied(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root 绕过文件权限检查")
+	}
+	path := filepath.Join(t.TempDir(), "smtp.env")
+	if err := os.WriteFile(path, []byte("WEDDING_SMTP_HOST=smtp.qq.com\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loadSMTPEnvFile(path)
+	if err == nil || !strings.Contains(err.Error(), "permission") {
+		t.Errorf("不可读文件应报权限错误，实际 %v", err)
+	}
+}
+
+// TestLoadConfigSMTPErrorPassthrough SMTP 配置错误随 error 返回，
+// 但 Config 完全可用、SMTP 为零值（日报禁用、服务不被阻塞）。
+func TestLoadConfigSMTPErrorPassthrough(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "smtp.env")
+	if err := os.WriteFile(path, []byte("这一行没有等号\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WEDDING_SMTP_ENV_PATH", path)
+
+	cfg, err := LoadConfig()
+	if err == nil {
+		t.Fatal("格式非法的 smtp.env 应返回错误")
+	}
+	if cfg.SMTP.Enabled() {
+		t.Errorf("配置错误时 SMTP 应为零值不可用: %+v", cfg.SMTP)
+	}
+	if cfg.DBPath == "" || cfg.ListenAddr == "" {
+		t.Errorf("配置错误不应影响其余配置: %+v", cfg)
+	}
+}

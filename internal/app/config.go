@@ -35,12 +35,13 @@ type Config struct {
 
 // LoadConfig 从环境变量与 SMTP 配置文件读取配置并填充默认值。
 // 默认值对齐共享机器目录收束约定（/data/wedding/...）；本地开发用环境变量覆盖。
-// SMTP 配置文件缺失不报错（可选配置）；存在但格式非法则返回错误。
+//
+// 返回的 error 仅来自 SMTP 配置加载（文件存在但不可读/格式非法/端口非法）：
+// 此时 Config 完全可用、SMTP 为零值（日报与告警不启用）。日报是可选能力，
+// 调用方按场景处理——serve 记警告后继续对外服务（不阻塞站点），
+// report daily 发送时才以该错误失败退出。SMTP 配置文件缺失不报错。
 func LoadConfig() (Config, error) {
 	smtp, err := loadSMTPConfig()
-	if err != nil {
-		return Config{}, err
-	}
 	return Config{
 		ListenAddr:   envOr("WEDDING_LISTEN_ADDR", ":3000"),
 		DBPath:       envOr("WEDDING_DB_PATH", "/data/wedding/data/wedding.db"),
@@ -60,7 +61,7 @@ func LoadConfig() (Config, error) {
 		},
 		SMTP:          smtp,
 		ReportDailyAt: envOr("WEDDING_REPORT_DAILY_AT", "07:17"),
-	}, nil
+	}, err
 }
 
 // loadSMTPConfig 组装 SMTP 配置：真实环境变量优先，WEDDING_SMTP_ENV_PATH
