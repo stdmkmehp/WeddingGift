@@ -45,7 +45,11 @@ func main() {
 		os.Exit(2)
 	}
 
-	cfg := app.LoadConfig()
+	cfg, err := app.LoadConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "配置加载失败:", err)
+		os.Exit(1)
+	}
 
 	switch os.Args[1] {
 	case "serve":
@@ -419,9 +423,11 @@ func usage() {
   WEDDING_SMTP_HOST      日报 SMTP 服务器（如 smtp.qq.com），为空则 serve 不启动日报调度
   WEDDING_SMTP_PORT      日报 SMTP 端口，默认 465（SSL 直连；其他端口走 STARTTLS）
   WEDDING_SMTP_USER      日报 SMTP 认证用户名
-  WEDDING_SMTP_PASS      日报 SMTP 认证密码/授权码（秘密，经 smtp.env 注入）
+  WEDDING_SMTP_PASS      日报 SMTP 认证密码/授权码（秘密）
   WEDDING_MAIL_FROM      日报发件地址
   WEDDING_MAIL_TO        日报收件地址（逗号分隔多个）
+  WEDDING_SMTP_ENV_PATH  SMTP 配置文件路径（KEY=VALUE 形式，环境变量优先、文件补缺），
+                         默认 "/data/wedding/secrets/smtp.env"；文件缺失则仅用环境变量
   WEDDING_REPORT_DAILY_AT  serve 进程内日报的北京时间发送时刻（HH:MM），默认 "07:17"
   WEDDING_*文案变量       WEDDING_COUPLE_NAMES / WEDDING_DATE / WEDDING_THANKS_MESSAGE 等（M0 §3.1）
 `)

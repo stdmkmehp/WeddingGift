@@ -57,14 +57,13 @@ chmod 700 /data/wedding/data /data/wedding/backups /data/wedding/secrets /data/w
 chown 65534:65534 /data/wedding/data /data/wedding/backups /data/wedding/secrets
 ls -la /data/wedding
 
-echo "--- 检查日报 SMTP 配置（compose env_file 要求文件存在） ---"
+echo "--- 日报 SMTP 配置提示（可选，缺失不影响部署） ---"
 if [ ! -f /data/wedding/secrets/smtp.env ]; then
-  echo "错误：/data/wedding/secrets/smtp.env 不存在。"
-  echo "compose.yaml 以 env_file 引用该文件注入日报 SMTP 配置（WEDDING_SMTP_* / WEDDING_MAIL_*），"
-  echo "请按 docs/06-m6-runbook.md 创建（0600、属主 65534）后重新执行。"
-  exit 1
+  echo "提示：/data/wedding/secrets/smtp.env 不存在，每日统计日报与登录失败告警将不启用"
+  echo "（服务照常运行）。需要时按 docs/06-m6-runbook.md §2.4 创建（0600、属主 65534）后重建容器。"
+else
+  echo "smtp.env 存在（应用运行时主动读取）"
 fi
-echo "smtp.env 存在"
 
 echo "--- 构建并启动 ${CONTAINER}（compose project: ${PROJECT}） ---"
 # 注入版本信息（对应 compose.yaml 的 build.args），供占位页展示构建版本。

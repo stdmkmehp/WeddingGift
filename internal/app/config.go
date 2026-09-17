@@ -2,6 +2,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -25,15 +26,21 @@ type Config struct {
 	Texts httpx.Texts
 	// SMTP 是每日统计日报与登录失败告警的发送配置；未完整配置时 serve
 	// 不启动进程内日报调度，CLI report daily 仅 --dry-run 可用。
-	// 秘密值由宿主机 /data/wedding/secrets/smtp.env 注入。
+	// 取值来源：环境变量优先，SMTPEnvPath 文件补缺（运行时主动读取，
+	// 与 app.key 同一秘密管理模式，不经 compose env_file 注入）。
 	SMTP report.SMTPConfig
 	// ReportDailyAt 是 serve 进程内日报的北京时间发送时刻（"HH:MM"）。
 	ReportDailyAt string
 }
 
-// LoadConfig 从环境变量读取配置并填充默认值。
+// LoadConfig 从环境变量与 SMTP 配置文件读取配置并填充默认值。
 // 默认值对齐共享机器目录收束约定（/data/wedding/...）；本地开发用环境变量覆盖。
-func LoadConfig() Config {
+// SMTP 配置文件缺失不报错（可选配置）；存在但格式非法则返回错误。
+func LoadConfig() (Config, error) {
+	smtp, err := loadSMTPConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	return Config{
 		ListenAddr:   envOr("WEDDING_LISTEN_ADDR", ":3000"),
 		DBPath:       envOr("WEDDING_DB_PATH", "/data/wedding/data/wedding.db"),
@@ -51,16 +58,42 @@ func LoadConfig() Config {
 			IcpFilingURL:    envOr("WEDDING_ICP_FILING_URL", "https://beian.miit.gov.cn/"),
 			MaintenanceText: envOr("WEDDING_MAINTENANCE_TEXT", "页面维护中，请稍后再试。"),
 		},
-		SMTP: report.SMTPConfig{
-			Host: os.Getenv("WEDDING_SMTP_HOST"),
-			Port: envIntOr("WEDDING_SMTP_PORT", 465),
-			User: os.Getenv("WEDDING_SMTP_USER"),
-			Pass: os.Getenv("WEDDING_SMTP_PASS"),
-			From: os.Getenv("WEDDING_MAIL_FROM"),
-			To:   splitAndTrim(os.Getenv("WEDDING_MAIL_TO")),
-		},
+		SMTP:          smtp,
 		ReportDailyAt: envOr("WEDDING_REPORT_DAILY_AT", "07:17"),
+	}, nil
+}
+
+// loadSMTPConfig 组装 SMTP 配置：真实环境变量优先，WEDDING_SMTP_ENV_PATH
+// 指向的配置文件（默认 /data/wedding/secrets/smtp.env）补缺。
+// 文件缺失视为未配置（可选能力）；文件存在但格式非法返回错误。
+func loadSMTPConfig() (report.SMTPConfig, error) {
+	file, err := loadSMTPEnvFile(envOr("WEDDING_SMTP_ENV_PATH", "/data/wedding/secrets/smtp.env"))
+	if err != nil {
+		return report.SMTPConfig{}, err
 	}
+	pick := func(key string) string {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+		return file[key]
+	}
+
+	cfg := report.SMTPConfig{
+		Host: pick("WEDDING_SMTP_HOST"),
+		User: pick("WEDDING_SMTP_USER"),
+		Pass: pick("WEDDING_SMTP_PASS"),
+		From: pick("WEDDING_MAIL_FROM"),
+		To:   splitAndTrim(pick("WEDDING_MAIL_TO")),
+		Port: 465,
+	}
+	if ps := pick("WEDDING_SMTP_PORT"); ps != "" {
+		n, err := strconv.Atoi(ps)
+		if err != nil || n <= 0 {
+			return report.SMTPConfig{}, fmt.Errorf("WEDDING_SMTP_PORT 非法: %q", ps)
+		}
+		cfg.Port = n
+	}
+	return cfg, nil
 }
 
 // HealthAddr 返回本机健康检查请求使用的地址（供 healthz-check 子命令使用）。
@@ -76,16 +109,6 @@ func (c Config) HealthAddr() string {
 func envOr(key, fallback string) string {
 	if v, ok := os.LookupEnv(key); ok && v != "" {
 		return v
-	}
-	return fallback
-}
-
-// envIntOr 读取整数型环境变量；未设置或无法解析时返回默认值。
-func envIntOr(key string, fallback int) int {
-	if v, ok := os.LookupEnv(key); ok && v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
-		}
 	}
 	return fallback
 }

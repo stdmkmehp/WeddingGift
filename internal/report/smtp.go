@@ -13,9 +13,9 @@ import (
 	"time"
 )
 
-// SMTPConfig 是日报邮件的发送配置（来自 WEDDING_SMTP_* / WEDDING_MAIL_*
-// 环境变量，见 app.LoadConfig；秘密值经 /data/wedding/secrets/smtp.env 注入，
-// 不进入 Git）。
+// SMTPConfig 是日报邮件的发送配置（取值见 app.LoadConfig：WEDDING_SMTP_* /
+// WEDDING_MAIL_* 环境变量优先，/data/wedding/secrets/smtp.env 文件运行时
+// 主动读取补缺，秘密不进入 Git）。
 type SMTPConfig struct {
 	Host string
 	Port int

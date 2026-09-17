@@ -1,7 +1,7 @@
 <!--
 文档名称: WeddingGift 技术架构设计
 文档类型: 技术设计 / 架构决策
-版本: v2.7
+版本: v2.9
 日期: 2026-09-17
 状态: 推荐架构基线，按小规模单机服务原则实施
 需求基线: docs/00-project-brief.md
@@ -65,6 +65,7 @@ WeddingGift 的技术方案按以下顺序取舍：
 | ADR-011 | 代理抹掉 `/wedding/`，前端只使用相对 URL | 与既定 nginx 接入方式一致，避免根路径错误 |
 | ADR-012 | 每小时由宿主机 cron 创建本机 SQLite 一致性备份 | 满足当前风险承受能力，不增加 COS 或异机恢复链路 |
 | ADR-013 | 运行日志替代独立审计系统 | 使用人数少且可人工介入，不建设审计表、留存平台或告警系统 |
+| ADR-014 | 登录失败只存内存缓冲（上限 100、溢出告警并清 50），日报由 serve 进程内调度发送 | 失败输入情况是非关键运营数据，项目所有者明确接受重启丢失；不落库就不新增表、不动 schema、无保留策略；缓冲在 serve 内存决定了日报调度必须在进程内而非 cron/CLI（2026-09-17 定） |
 
 ## 3. 系统拓扑
 
@@ -501,7 +502,7 @@ wedding report daily [--dry-run] [--window 24h]
 - 明文密钥和礼品码从权限为 `0600` 的文件或 stdin 读取，不作为命令行参数。
 - `status` 只显示内部编号和数量，不显示明文密钥或礼品码。
 - `key revoke` 停用密钥并删除其会话，不自动生成替代密钥。
-- `report daily` 统计滚动窗口（默认最近 24 小时）内新增的绑定（`access_key.bound_at`）与登录（`session.created_at`）及累积数据（复用 `Stats`），渲染纯文本邮件经 SMTP 发送给项目所有者；`--dry-run` 只打印不发送，用于本地与上机验证。统计窗口按 UTC 存储文本直接区间比较（字典序即时间序），展示时区为固定 UTC+8（运行镜像为 scratch 无 tzdata，国内无夏令时，固定偏移即正确）。SMTP 465 端口走 SSL 直连、其他端口走 STARTTLS，认证仅在 TLS 信道上进行；配置经 `WEDDING_SMTP_*` / `WEDDING_MAIL_*` 环境变量注入（见 §14.3）。邮件正文含同行组称呼明细，不做脱敏——收件人即项目所有者本人（管理员），且邮件不经过应用日志；这不违反 §15.1 的日志脱敏纪律。
+- `report daily` 是**统计口径与 SMTP 链路的人工验证工具**：统计滚动窗口（默认最近 24 小时）内新增的绑定（`access_key.bound_at`）与登录（`session.created_at`）及累积数据（复用 `Stats`），渲染纯统计版日报邮件；`--dry-run` 只打印不发送。统计窗口按 UTC 存储文本直接区间比较（字典序即时间序），展示时区为固定 UTC+8（运行镜像为 scratch 无 tzdata，国内无夏令时，固定偏移即正确）。SMTP 465 端口走 SSL 直连、其他端口走 STARTTLS，认证仅在 TLS 信道上进行；配置经 `WEDDING_SMTP_*` / `WEDDING_MAIL_*` 环境变量注入（见 §14.3）。**正式的每日日报不走 cron/CLI，由 serve 进程内调度发送**（统计 + 登录失败明细，见 §14.3）——登录失败缓冲只存在于 serve 进程内存，独立 CLI 进程不可见，故 CLI 版如实注明不含失败明细。邮件正文含同行组称呼与失败输入名字，不做脱敏——收件人即项目所有者本人（管理员），且邮件不经过应用日志；这不违反 §15.1 的日志脱敏纪律。
 - 不提供 `keys generate`、自动补发、自动改绑、凭据交付 spool、恢复或复杂审计命令。
 - 极少量特殊修正采用停服、先备份、人工 SQL/一次性脚本、完整性检查和重新启动的流程，不把它产品化为通用功能。
 
@@ -530,7 +531,7 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 | `/root/WeddingGift/` | compose、镜像版本信息、部署与备份脚本、`/etc/cron.d/wedding` 片段与 nginx 插入片段的仓库副本 | 只属于 WeddingGift |
 | `/data/wedding/data/` | SQLite 数据库 | `0700` 目录、数据库 `0600`，属主容器用户 65534 |
 | `/data/wedding/backups/` | 本机 cron 备份 | 属主容器用户 65534；默认保留最近 72 份（≈3 天），不写入 Costra 目录 |
-| `/data/wedding/secrets/` | `app.key`；`smtp.env`（日报 SMTP 配置，经 compose `env_file` 引用注入，不挂载进容器文件系统） | `0700` 目录、`0600` 文件，属主容器用户 65534；`app.key` 只读挂载 |
+| `/data/wedding/secrets/` | `app.key`；`smtp.env`（日报 SMTP 配置，应用运行时主动读取） | `0700` 目录、`0600` 文件，属主容器用户 65534、只读挂载 |
 | `/data/wedding/import/` | 首导临时数据包 | root:root `0755` 目录、`0644` 文件（容器 65534 需穿越并读取）；导入后删除或移回离线位置 |
 | `/data/wedding/append/` | 追加临时数据包（`data append`） | 同 `import`：root:root `0755` 目录、`0644` 文件、只读挂载；追加后删除或移回离线位置 |
 | `/data/wedding/nginx/` | 修改前备份和 WeddingGift 片段 | root:root `0700`，不挂载进容器；不覆盖 Costra 全量配置 |
@@ -582,12 +583,16 @@ WeddingGift 全部产出收束到两处固定根目录，不散落其他位置�
 - 本项目不承诺自动数据恢复；如确有需要，项目所有者根据本地备份和离线源数据人工处理。
 - cron 失败只写入本机日志；不建设外部告警平台。项目所有者可在重要时间点人工查看最近备份时间。
 
-### 14.3 每日统计日报（2026-09-17 起）
+### 14.3 每日统计日报与登录失败内存记录（2026-09-17 起）
 
-- 宿主机 cron 同一独立单元 `/etc/cron.d/wedding` 内追加一行，**每天 07:17** 执行 `ops/daily-report.sh`：经 `docker compose exec -T app /app/wedding report daily` 调用容器内同版本二进制，统计滚动 24 小时新增的绑定与登录及累积数据，渲染纯文本邮件经 SMTP 发送给项目所有者。07:17 与既有高峰任务（整点 pg_dump、`:47` 主从检查、06:27 刷新、23:5x 分析窗口）均无冲突。
-- SMTP 配置（`WEDDING_SMTP_HOST` / `WEDDING_SMTP_PORT` / `WEDDING_SMTP_USER` / `WEDDING_SMTP_PASS` / `WEDDING_MAIL_FROM` / `WEDDING_MAIL_TO`）存于宿主机 `/data/wedding/secrets/smtp.env`（`0600`、属主 65534，与 `app.key` 同目录模型），经 compose `env_file` 注入容器环境；**秘密值不进 Git**，仓库只出现文件路径。compose 任何子命令都要求该文件存在，缺失时 `ops/deploy-app.sh` 会前置报错。
-- 邮件正文含未绑定同行组的称呼明细（收件人即项目所有者本人，属管理员自用运营数据）；日报不经应用日志，正文不写 stdout——cron 侧 stdout/stderr 仅一行结果日志追加到 `/data/wedding/backups/report.log`（与 backup.log 分离，目录收束约定）。
-- 发送失败只落本机日志，不建设外部告警、不重试补发（次日日报自然反映最新累积数据）；首次启用用 `report daily --dry-run`（只打印不发送）验证统计口径，再实发一次验证 SMTP 出网链路。
+**日报由 serve 进程内调度发送，不走 cron。** 2026-09-17 第二版起：登录失败明细只保存在 serve 进程内存中，独立进程（cron + CLI）读不到，因此调度必须在进程内——serve 启动一个定时 goroutine，每天北京时间 `07:17`（`WEDDING_REPORT_DAILY_AT`，`HH:MM` 零填充格式）收集滚动 24 小时窗口统计（新增绑定/登录）与累积数据（复用 `Stats`），加上内存缓冲中的全部登录失败明细，渲染纯文本邮件经 SMTP 发送给项目所有者。SMTP 未完整配置时 serve 照常对外服务，仅记 `daily_report_disabled` 警告日志。
+
+**登录失败内存记录（不持久化）**：所有登录失败分支（输入格式不正确、名字无匹配、密钥无匹配/已停用、密钥已绑定其他同行组）在返回前写入内存环形缓冲，内容为失败类别、用户输入的原始名字、输入密钥的**掩码**（首尾各 2 字符，如 `12****78`，永不保存明文与完整摘要外的信息）及归属注解（名字对应的同行组、输入密钥摘要命中的真实密钥 external_ref 及其已绑组称呼）。缓冲**上限 100 条**：插入第 101 条时立即异步发送「登录失败告警」邮件（含当前全部条目），随后清理最早 50 条，保证最新失败始终可记录。日报**发送成功后才清空缓冲**——每条失败只在一封日报里汇报；发送失败保留到次日重试。**进程重启/崩溃缓冲即清空，项目所有者明确接受该丢失风险**（非关键数据）。
+
+- SMTP 配置（`WEDDING_SMTP_HOST` / `WEDDING_SMTP_PORT` / `WEDDING_SMTP_USER` / `WEDDING_SMTP_PASS` / `WEDDING_MAIL_FROM` / `WEDDING_MAIL_TO`）存于宿主机 `/data/wedding/secrets/smtp.env`（`0600`、属主 65534，与 `app.key` 同目录模型），**由应用运行时主动读取**（随 secrets 只读挂载进容器；真实环境变量优先、文件补缺，`WEDDING_SMTP_ENV_PATH` 可覆盖路径）；**秘密值不进 Git**，仓库只出现文件路径。不经 compose `env_file` 注入——镜像构建机与 compose 执行机都不必持有该文件；文件缺失仅日报与告警不启用（`deploy-app.sh` 只提示，serve 照常运行），存在但格式非法则启动报错。
+- 邮件正文含同行组称呼与失败输入名字（收件人即项目所有者本人，属管理员自用运营数据）；日报与告警不经应用日志，正文不写 stdout——进程内只记 `daily_report_scheduled` / `daily_report_sent` / `daily_report_failed` / `login_failure_alert_sent` / `login_failure_alert_failed` 事件日志（不含邮件内容）。
+- 发送失败只落本机日志，不建设外部告警平台（溢出告警邮件本身即最小告警）；次日日报自然反映最新累积数据。首次启用用 `report daily --dry-run` 核对统计口径、再实发一次验证 SMTP 出网链路（CLI 为纯统计版，见 §11）。
+- cron 单元 `/etc/cron.d/wedding` 只保留备份任务（§14.1），不承担日报。
 
 ## 15. 日志与健康检查
 
@@ -602,7 +607,7 @@ duration_ms, internal_group_ref, internal_key_ref, error_class, build_version
 
 禁止记录：请求正文、姓名、昵称、明文密钥、礼品码、Cookie、应用秘密和完整 IP。
 
-只记录必要事件：服务启动/停止、登录成功或失败类别、首次绑定、礼品读取失败、数据导入、密钥停用、备份成功/失败和未处理错误。不创建独立 `AUDIT_EVENT` 表，不设置复杂审计容量与保留状态机。
+只记录必要事件：服务启动/停止、登录成功或失败类别、首次绑定、礼品读取失败、数据导入、密钥停用、备份成功/失败、日报调度与发送结果（`daily_report_scheduled` / `daily_report_sent` / `daily_report_failed` / `daily_report_disabled` / `login_failure_alert_sent` / `login_failure_alert_failed`，不含邮件内容）和未处理错误。不创建独立 `AUDIT_EVENT` 表，不设置复杂审计容量与保留状态机。登录失败的输入情况（名字、密钥掩码）只保存在 serve 进程内存缓冲并进入邮件，不写日志、不落库（§14.3、ADR-014）。
 
 ### 15.2 健康与人工检查
 
@@ -733,7 +738,9 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
-| v2.7 | 2026-09-17 | 新增每日统计日报（§11 `report daily`、§14.3）：滚动 24 小时窗口统计新增绑定/登录 + 累积数据（复用 `Stats`，零 schema 变更），经 SMTP（465 SSL / STARTTLS）发送纯文本邮件给项目所有者，含未绑定同行组称呼明细（收件人即管理员，不做脱敏）；SMTP 配置走 `/data/wedding/secrets/smtp.env` + compose `env_file`（不进 Git），cron 同一独立单元内每天 07:17 触发，上机流程见 06 runbook §2.5/§6.5 |
+| v2.9 | 2026-09-17 | SMTP 配置加载改为应用运行时主动读取：移除 compose `env_file`（镜像构建机/compose 执行机不再要求持有 smtp.env），环境变量优先、`/data/wedding/secrets/smtp.env` 文件补缺（`WEDDING_SMTP_ENV_PATH` 可覆盖），文件缺失仅日报不启用、格式非法启动报错；`deploy-app.sh` 前置报错降级为提示；§13.1/§14.3 同步 |
+| v2.8 | 2026-09-17 | 日报架构改为 serve 进程内调度（ADR-014、§14.3）：新增登录失败内存记录（上限 100、溢出即告警邮件并清最早 50、密钥只存掩码、归属注解富化），日报含全部失败明细且发送成功才清空缓冲；日报不再走 cron（`ops/daily-report.sh` 撤除，cron 单元回归只保留备份），CLI `report daily` 重新定位为统计口径与 SMTP 链路的人工验证工具（纯统计版）；`store.LoginDenyGeneric` 拆分为名称/密钥两类内部原因（对外仍统一模糊），新增 `WEDDING_REPORT_DAILY_AT`（默认 `07:17`）；零 schema 变更不变 |
+| v2.7 | 2026-09-17 | 新增每日统计日报（§11 `report daily`、§14.3）：滚动 24 小时窗口统计新增绑定/登录 + 累积数据（复用 `Stats`，零 schema 变更），经 SMTP（465 SSL / STARTTLS）发送纯文本邮件给项目所有者，含未绑定同行组称呼明细（收件人即管理员，不做脱敏）；SMTP 配置走 `/data/wedding/secrets/smtp.env` + compose `env_file`（不进 Git）；上机流程见 06 runbook §6.5 |
 | v2.6 | 2026-09-15 | 新增 `data append` 上线后纯追加入口（§11）：开放世界校验（库内现状 ∪ 追加包）+ 单事务纯 INSERT，仅新增五类实体（不含密钥）、不修改不删除既有数据，服务在线可执行；追加数据包走专用目录 `/data/wedding/append`（与首导 `import` 语义分离，§13.1 表同步）；契约侧见 04 文档 §2.8，上机流程见 06 runbook §6.4 |
 | v2.5 | 2026-09-14 | 礼品类型契约修订（数据约束第 8 条）：取消首批内置必备清单硬校验，旅游年卡细化为地区变体；兑换入口由仅 HTTPS 放宽为 HTTPS URL 或微信小程序口令（`#小程序://名称/路径`），与 `docs/04-m0-decisions.md` v1.2 同步 |
 | v2.4 | 2026-09-14 | 移除 `ops/test.sh`、`ops/verify-public.sh`、`ops/canary-smoke.sh`、`ops/staging-selfcheck.sh`：§16 各层测试改用显式命令（`go test -race ./...` 等，见 README），前端危险 API / 外部资源 / 持久存储与秘密按代码约定人工 + CR 把关；发布验证与 canary 冒烟改由 `docs/06-m6-runbook.md` §4 的人工核对清单覆盖；`docs/05-m2-runbook.md` §2/§4 与 `docs/06-m6-security-review.md` 同步 |

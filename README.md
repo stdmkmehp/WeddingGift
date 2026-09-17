@@ -84,12 +84,13 @@ go run ./cmd/wedding key revoke --ref K001
 # SQLite online backup 一致性备份（含完整性检查，目标存在则拒绝覆盖）
 go run ./cmd/wedding backup create --output /path/to/wedding-backup.db
 
-# 每日统计日报：滚动窗口（默认 24h）新增绑定/登录 + 累积数据，渲染纯文本邮件
+# 纯统计版日报（人工验证统计口径与 SMTP 链路）：滚动窗口（默认 24h）新增绑定/登录 + 累积数据
 # --dry-run 只打印不发送；实发需先配置 WEDDING_SMTP_* / WEDDING_MAIL_*（见 docs/06 §6.5）
+# 注意：正式每日日报由 serve 进程内调度发送（统计 + 登录失败内存明细），不走 cron/CLI
 go run ./cmd/wedding report daily --dry-run
 ```
 
-本机 cron（staging）：`install -m 0644 -o root -g root deploy/wedding.cron /etc/cron.d/wedding`，每小时 `:44` 由 `ops/backup.sh` 通过容器内二进制产出备份并保留最近 72 份；每天 `07:17` 由 `ops/daily-report.sh` 发送统计日报（SMTP 配置在 `/data/wedding/secrets/smtp.env`，经 compose `env_file` 注入，不进 Git）；不修改 Costra 的 cron 文件。备份还原用 `ops/restore-db.sh`（缺省取最新备份，还原前自动兜底备份，失败自动回滚）；测试循环的清库重导用 `ops/reset-db.sh`（清库前自动备份，停服删库后 migrate 重建 schema）。
+本机 cron（staging）：`install -m 0644 -o root -g root deploy/wedding.cron /etc/cron.d/wedding`，每小时 `:44` 由 `ops/backup.sh` 通过容器内二进制产出备份并保留最近 72 份；不修改 Costra 的 cron 文件。每日统计日报不走 cron——登录失败明细只在 serve 进程内存（上限 100 条、溢出即告警邮件并清最早 50、重启即丢），日报由 serve 进程内调度每天北京时间 `07:17` 发送（SMTP 配置在 `/data/wedding/secrets/smtp.env`，应用运行时主动读取、环境变量优先文件补缺，不进 Git；见 docs/06 §6.5）。备份还原用 `ops/restore-db.sh`（缺省取最新备份，还原前自动兜底备份，失败自动回滚）；测试循环的清库重导用 `ops/reset-db.sh`（清库前自动备份，停服删库后 migrate 重建 schema）。
 
 ## M4 鉴权与会话
 

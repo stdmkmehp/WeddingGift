@@ -35,11 +35,10 @@ services:
     environment:
       WEDDING_LISTEN_ADDR: ":3000"
 
-    # 每日统计日报的 SMTP 配置（WEDDING_SMTP_* / WEDDING_MAIL_*）。
-    # 文件在宿主机 secrets 目录、0600/65534、不进 Git；内容即秘密，仓库只引用路径。
-    # compose 任何子命令都要求 env_file 存在，部署/重建前必须已按 runbook 创建。
-    env_file:
-      - /data/wedding/secrets/smtp.env
+    # 每日统计日报的 SMTP 配置不经 compose 注入：应用运行时主动读取
+    # /data/wedding/secrets/smtp.env（下方 secrets 只读挂载；环境变量优先、
+    # 文件补缺，文件缺失则日报不启用、服务照常）。可用
+    # WEDDING_SMTP_ENV_PATH 覆盖路径。
 
     # 仅挂载 WeddingGift 自有目录；M1 占位主页不需要数据库/秘密，
     # 这些挂载为后续里程碑预留，占位阶段目录为空亦不影响启动。
