@@ -207,6 +207,9 @@ type GroupStat struct {
 	GiftTypes string
 	// BoundKeys 是该组已绑定密钥的数量（一个同行组可绑定多个密钥）。
 	BoundKeys int
+	// BoundKeyRefs 是该组已绑定密钥的 external_ref（字典序、", " 分隔）；
+	// 未绑定任何密钥时为空串，与 BoundKeys=0 等价但可直接阅读。
+	BoundKeyRefs string
 }
 
 // Stats 是 status 命令的脱敏统计结果：只含内部编号与数量，不含明文密钥/礼品码。
@@ -271,7 +274,12 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 		                 FROM (SELECT DISTINCT gi.type_key AS type_key
 		                       FROM gift_item gi
 		                       WHERE gi.group_id = g.id AND gi.status = 'active') t), ''),
-		       (SELECT COUNT(*) FROM access_key k WHERE k.group_id = g.id)
+		       (SELECT COUNT(*) FROM access_key k WHERE k.group_id = g.id),
+		       COALESCE((SELECT GROUP_CONCAT(t.ref)
+		                 FROM (SELECT k.external_ref AS ref
+		                       FROM access_key k
+		                       WHERE k.group_id = g.id
+		                       ORDER BY k.external_ref) t), '')
 		FROM recipient_group g
 		ORDER BY g.external_ref`)
 	if err != nil {
@@ -280,12 +288,13 @@ func (d *DB) Stats(ctx context.Context) (*Stats, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var gs GroupStat
-		var rawTypes string
+		var rawTypes, rawKeyRefs string
 		if err := rows.Scan(&gs.ExternalRef, &gs.Salutation, &gs.Status, &gs.MemberCount,
-			&gs.GiftCount, &rawTypes, &gs.BoundKeys); err != nil {
+			&gs.GiftCount, &rawTypes, &gs.BoundKeys, &rawKeyRefs); err != nil {
 			return nil, err
 		}
-		gs.GiftTypes = normalizeTypeKeys(rawTypes)
+		gs.GiftTypes = normalizeRefList(rawTypes)
+		gs.BoundKeyRefs = normalizeRefList(rawKeyRefs)
 		s.GroupStats = append(s.GroupStats, gs)
 	}
 	if err := rows.Err(); err != nil {
@@ -322,9 +331,10 @@ func (d *DB) WindowStats(ctx context.Context, since, until string) (*WindowStats
 	return w, nil
 }
 
-// normalizeTypeKeys 把 GROUP_CONCAT 的原始结果（逗号无空格、聚合顺序不保证）
+// normalizeRefList 把 GROUP_CONCAT 的原始结果（逗号无空格、聚合顺序不保证）
 // 规范化为稳定有序、便于阅读的 "a, b, c"；空输入原样返回空串。
-func normalizeTypeKeys(raw string) string {
+// 用于礼品类型列表与已绑定密钥编号列表。
+func normalizeRefList(raw string) string {
 	if raw == "" {
 		return ""
 	}

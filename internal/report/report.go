@@ -54,7 +54,8 @@ func Collect(ctx context.Context, db *store.DB, now time.Time, window time.Durat
 
 // RenderDaily 渲染 serve 进程内调度的日报：统计 + 内存缓冲中的全部登录失败
 // 明细。failures 为 nil 时表示缓冲当前为空。正文面向项目所有者本人，
-// 含未绑定同行组称呼明细与失败输入情况，不做脱敏。
+// 含同行组绑定情况明细（已绑定组列密钥编号、未绑定组列待办）与失败输入情况，
+// 不做脱敏。
 func RenderDaily(s *Summary, failures []LoginFailure) (subject, body string) {
 	var fb strings.Builder
 	windowFailures := 0
@@ -124,25 +125,50 @@ func renderDaily(s *Summary, failuresSection string) (subject, body string) {
 	fmt.Fprintf(&b, "    已绑定 %d / 未绑定 %d（绑定率 %.1f%%）\n", t.KeysBound, unbound, bindRate)
 	fmt.Fprintf(&b, "  当前有效会话：%d\n", t.Sessions)
 
-	// 未绑定明细只列 active 组：disabled 组不再引导来宾，不属于待办。
-	var pending []store.GroupStat
+	// 绑定情况两组明细：已绑定组列出绑定的密钥编号（含已停用组，标注状态）；
+	// 未绑定组只列 active 组——disabled 组不再引导来宾，不属于待办。
+	var bound, pending []store.GroupStat
 	for _, gs := range t.GroupStats {
-		if gs.BoundKeys == 0 && gs.Status == domain.StatusActive {
+		if gs.BoundKeys > 0 {
+			bound = append(bound, gs)
+		} else if gs.Status == domain.StatusActive {
 			pending = append(pending, gs)
 		}
 	}
-	fmt.Fprintf(&b, "\n■ 尚未绑定密钥的同行组（%d 个）\n", len(pending))
-	if len(pending) == 0 {
-		b.WriteString("  全部 active 同行组均已有密钥绑定。\n")
-	} else {
-		for _, gs := range pending {
-			fmt.Fprintf(&b, "  - %s %s：成员 %d 人，active 礼品 %d 份（%s）\n",
-				gs.ExternalRef, gs.Salutation, gs.MemberCount, gs.GiftCount, orDash(gs.GiftTypes))
-		}
-	}
+	writeGroupSection(&b, "已绑定密钥的同行组", bound, true)
+	writeGroupSection(&b, "尚未绑定密钥的同行组", pending, false)
 
 	b.WriteString(failuresSection)
 	return subject, b.String()
+}
+
+// writeGroupSection 渲染一组同行组明细：bound=true 时列出该组已绑定的密钥
+// 编号，否则标注「尚未绑定密钥」作为待办；两组都给出成员数、active 礼品数
+// 与覆盖的礼品类型。明细面向项目所有者本人，含组称呼，不做脱敏。
+func writeGroupSection(b *strings.Builder, title string, groups []store.GroupStat, bound bool) {
+	fmt.Fprintf(b, "\n■ %s（%d 个）\n", title, len(groups))
+	if len(groups) == 0 {
+		if bound {
+			b.WriteString("  尚无同行组绑定密钥。\n")
+		} else {
+			b.WriteString("  全部 active 同行组均已有密钥绑定。\n")
+		}
+		return
+	}
+	for _, gs := range groups {
+		if bound {
+			status := ""
+			if gs.Status != domain.StatusActive {
+				status = "（已停用）"
+			}
+			fmt.Fprintf(b, "  - %s %s%s：密钥 %s｜成员 %d 人｜active 礼品 %d 份（%s）\n",
+				gs.ExternalRef, gs.Salutation, status, gs.BoundKeyRefs,
+				gs.MemberCount, gs.GiftCount, orDash(gs.GiftTypes))
+			continue
+		}
+		fmt.Fprintf(b, "  - %s %s：尚未绑定密钥｜成员 %d 人｜active 礼品 %d 份（%s）\n",
+			gs.ExternalRef, gs.Salutation, gs.MemberCount, gs.GiftCount, orDash(gs.GiftTypes))
+	}
 }
 
 // orDash 把空串渲染为 "-"，避免明细行出现空段难以阅读。

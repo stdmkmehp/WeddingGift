@@ -173,11 +173,11 @@ func StatusText(s *store.Stats) string {
 	fmt.Fprintf(&b, "活跃会话: %d\n", s.Sessions)
 
 	if len(s.GroupStats) > 0 {
-		b.WriteString("\n同行组明细（external_ref | 称呼 | 状态 | 成员数 | active 礼品数 | 礼品类型 | 已绑定密钥数）:\n")
+		b.WriteString("\n同行组明细（external_ref | 称呼 | 状态 | 成员数 | active 礼品数 | 礼品类型 | 已绑定密钥 | 已绑定密钥数）:\n")
 		for _, gs := range s.GroupStats {
-			fmt.Fprintf(&b, "  %s | %s | %s | %d | %d | %s | %d\n",
+			fmt.Fprintf(&b, "  %s | %s | %s | %d | %d | %s | %s | %d\n",
 				gs.ExternalRef, gs.Salutation, gs.Status, gs.MemberCount, gs.GiftCount,
-				orDash(gs.GiftTypes), gs.BoundKeys)
+				orDash(gs.GiftTypes), orDash(gs.BoundKeyRefs), gs.BoundKeys)
 		}
 	}
 	return b.String()

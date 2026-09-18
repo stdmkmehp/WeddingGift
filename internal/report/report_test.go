@@ -25,7 +25,7 @@ func testSummary() *Summary {
 			AccessKeys: 4, KeysActive: 3, KeysDisabled: 1,
 			KeysBound: 1, Sessions: 2,
 			GroupStats: []store.GroupStat{
-				{ExternalRef: "G001", Salutation: "张伟 & 李娜 一家", Status: "active", MemberCount: 2, GiftCount: 3, GiftTypes: "coffee, movie", BoundKeys: 1},
+				{ExternalRef: "G001", Salutation: "张伟 & 李娜 一家", Status: "active", MemberCount: 2, GiftCount: 3, GiftTypes: "coffee, movie", BoundKeys: 2, BoundKeyRefs: "K001, K007"},
 				{ExternalRef: "G002", Salutation: "王芳", Status: "active", MemberCount: 2, GiftCount: 3, GiftTypes: "travel", BoundKeys: 0},
 			},
 		},
@@ -60,8 +60,10 @@ func TestRenderDaily(t *testing.T) {
 		"成功登录：5 人次",
 		"卡片密钥：4 张（active 3 / disabled 1）",
 		"已绑定 1 / 未绑定 3（绑定率 25.0%）",
+		"已绑定密钥的同行组（1 个）",
+		"- G001 张伟 & 李娜 一家：密钥 K001, K007｜成员 2 人｜active 礼品 3 份（coffee, movie）",
 		"尚未绑定密钥的同行组（1 个）",
-		"- G002 王芳：成员 2 人，active 礼品 3 份（travel）",
+		"- G002 王芳：尚未绑定密钥｜成员 2 人｜active 礼品 3 份（travel）",
 		"登录失败明细（内存记录 3 条，其中窗口内 2 条；进程重启即清空）",
 		"09-17 21:03｜名字 王芳（属 G001 王芳）｜密钥 12****78（有效 K002，已绑定 G003 陈强 & 刘洋 一家）｜密钥已绑定其他同行组",
 		"09-16 22:05｜名字 王彷（无匹配）｜密钥 12****78（有效 K002，未绑定）｜名字无效（无匹配）",
@@ -72,8 +74,35 @@ func TestRenderDaily(t *testing.T) {
 		}
 	}
 	// 已绑定组不应出现在未绑定明细中。
-	if strings.Contains(body, "- G001") {
-		t.Errorf("G001 已有绑定密钥，不应列入未绑定明细:\n%s", body)
+	if strings.Contains(body, "- G002 王芳：成员") {
+		t.Errorf("G002 已绑定密钥时不应列入未绑定明细:\n%s", body)
+	}
+}
+
+// TestRenderDailyBoundGroupStatus 已绑定但已停用的同行组仍展示，并标注状态。
+func TestRenderDailyBoundGroupStatus(t *testing.T) {
+	s := testSummary()
+	s.Totals.GroupStats[0].Status = "disabled"
+
+	_, body := RenderDaily(s, nil)
+	if !strings.Contains(body, "- G001 张伟 & 李娜 一家（已停用）：密钥 K001, K007") {
+		t.Errorf("停用组应标注（已停用）:\n%s", body)
+	}
+}
+
+// TestRenderDailyNoBoundGroups 尚无绑定时两个小节都要如实展示。
+func TestRenderDailyNoBoundGroups(t *testing.T) {
+	s := testSummary()
+	s.Totals.GroupStats[0].BoundKeys = 0
+	s.Totals.GroupStats[0].BoundKeyRefs = ""
+
+	_, body := RenderDaily(s, nil)
+	if !strings.Contains(body, "已绑定密钥的同行组（0 个）") ||
+		!strings.Contains(body, "尚无同行组绑定密钥。") {
+		t.Errorf("无绑定组时应如实展示:\n%s", body)
+	}
+	if !strings.Contains(body, "尚未绑定密钥的同行组（2 个）") {
+		t.Errorf("两组均为待办时应展示 2 个:\n%s", body)
 	}
 }
 
@@ -118,6 +147,7 @@ func TestRenderOverflowAlert(t *testing.T) {
 func TestRenderDailyAllBound(t *testing.T) {
 	s := testSummary()
 	s.Totals.GroupStats[1].BoundKeys = 2
+	s.Totals.GroupStats[1].BoundKeyRefs = "K003, K004"
 	s.Totals.KeysBound = 3
 
 	_, body := RenderDaily(s, nil)
