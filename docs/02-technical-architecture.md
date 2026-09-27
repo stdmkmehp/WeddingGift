@@ -488,6 +488,7 @@ wedding data import --dir <data-dir>
 wedding data append --dir <data-dir> [--dry-run]
 wedding status
 wedding key revoke --ref <card-ref>
+wedding gift fix-code --ref <gift-ref>
 wedding backup create --output <path>
 wedding report daily [--dry-run] [--window 24h]
 ```
@@ -502,9 +503,10 @@ wedding report daily [--dry-run] [--window 24h]
 - 明文密钥和礼品码从权限为 `0600` 的文件或 stdin 读取，不作为命令行参数。
 - `status` 只显示内部编号和数量，不显示明文密钥或礼品码。
 - `key revoke` 停用密钥并删除其会话，不自动生成替代密钥。
+- `gift fix-code` 是「只增不改不删」（契约 §2.8 / D-21）的唯一例外通道：仅当既有 code 模式礼品的激活码明文填错时使用，按 `external_ref` 定位后单事务内「加密 → UPDATE → 读回解密比对」提交，仅重写 `code_ciphertext` 不触碰其他字段；`card_secret` 与不存在的 ref 明确拒绝，空值/含换行值写库前拒绝。新明文从 stdin 读入（同上文「不作命令行参数」纪律），服务在线时可安全执行（单行 UPDATE 短事务；读路径无缓存直读库，提交后下一请求即生效，无需停服）。上机流程见 06 runbook §6.6。
 - `report daily` 是**统计口径与 SMTP 链路的人工验证工具**：统计滚动窗口（默认最近 24 小时）内新增的绑定（`access_key.bound_at`）与登录（`session.created_at`）及累积数据（复用 `Stats`），渲染纯统计版日报邮件；`--dry-run` 只打印不发送。统计窗口按 UTC 存储文本直接区间比较（字典序即时间序），展示时区为固定 UTC+8（运行镜像为 scratch 无 tzdata，国内无夏令时，固定偏移即正确）。SMTP 465 端口走 SSL 直连、其他端口走 STARTTLS，认证仅在 TLS 信道上进行；配置经 `WEDDING_SMTP_*` / `WEDDING_MAIL_*` 环境变量注入（见 §14.3）。**正式的每日日报不走 cron/CLI，由 serve 进程内调度发送**（统计 + 登录失败明细，见 §14.3）——登录失败缓冲只存在于 serve 进程内存，独立 CLI 进程不可见，故 CLI 版如实注明不含失败明细。邮件正文含同行组称呼与失败输入名字，不做脱敏——收件人即项目所有者本人（管理员），且邮件不经过应用日志；这不违反 §15.1 的日志脱敏纪律。
 - 不提供 `keys generate`、自动补发、自动改绑、凭据交付 spool、恢复或复杂审计命令。
-- 极少量特殊修正采用停服、先备份、人工 SQL/一次性脚本、完整性检查和重新启动的流程，不把它产品化为通用功能。
+- 极少量特殊修正不产品化为通用功能；唯一的例外是 `gift fix-code`（见上条）——因为激活码密文依赖 app.key 派生密钥，人工 SQL 无法正确构造密文，故收口为这一个窄口子命令，其余特殊修正仍采用停服、先备份、人工 SQL/一次性脚本、完整性检查和重新启动的流程。
 
 ## 12. 真实 URL 访问链路
 
@@ -740,6 +742,7 @@ flowchart LR
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.12 | 2026-09-27 | 新增 `gift fix-code` 上线后纠错通道（§11）：code 模式礼品激活码填错时按 external_ref 单事务修正（加密 → UPDATE → 读回解密比对），明文走 stdin，在线零停机；为「只增不改不删」（D-21）唯一例外，上机流程见 06 runbook §6.6 |
 | v2.11 | 2026-09-18 | 日报补齐已绑定同行组明细（§14.3）：`GroupStat.BoundKeyRefs` 给出该组已绑定密钥编号（字典序），日报新增「已绑定密钥的同行组」小节（含停用标注），原未绑定小节改为待办语义；`status` 组明细同步新增「已绑定密钥」列 |
 | v2.10 | 2026-09-17 | SMTP 配置容错修正（§14.3）：文件不可读/格式非法不再导致进程退出——`LoadConfig` 连同完整可用配置返回错误，serve 记 `smtp_config_invalid` 警告并禁用日报继续服务，`report daily` 发送时失败退出、dry-run 仅提示；起因是上机 `0600 root:root` 的 smtp.env 使容器 65534 读出 EACCES、serve 无法启动（即时修复：文件 `chown 65534:65534`） |
 | v2.9 | 2026-09-17 | SMTP 配置加载改为应用运行时主动读取：移除 compose `env_file`（镜像构建机/compose 执行机不再要求持有 smtp.env），环境变量优先、`/data/wedding/secrets/smtp.env` 文件补缺（`WEDDING_SMTP_ENV_PATH` 可覆盖），文件缺失仅日报不启用、格式非法启动报错；`deploy-app.sh` 前置报错降级为提示；§13.1/§14.3 同步 |

@@ -508,6 +508,22 @@ rm -rf /data/wedding/append/*
 - 失败处理：日报发送失败只记 `daily_report_failed` 日志并次日重试（缓冲不清空）；连续失败先用 CLI dry-run 区分统计侧（数据库/schema）还是 SMTP 侧（网络/认证）问题。重启会清空失败缓冲（统计数据在库内不受影响）。
 - 排障：启动日志出现 `smtp_config_invalid`（如 `permission denied`）说明 smtp.env 存在但容器读不到或内容非法——先核对属主与权限（`ls -l /data/wedding/secrets/smtp.env` 应为 `-rw------- 1 65534 65534`，不对则 `chown 65534:65534` + `chmod 600` 后 `docker restart wedding-app`），再核对文件内容为 `KEY=VALUE` 逐行格式。服务本身不受该警告影响。
 
+### 6.6 修正 code 模式礼品激活码（ops/fix-gift-code.sh）
+
+定位：**「只增不改不删」（§6.4 / D-21）的唯一例外**——仅当既有 code 模式礼品的激活码明文填错时使用；仅重写该礼品的 `code_ciphertext`，不触碰其他字段。无需停服：单行 UPDATE 短事务在线安全，读路径无缓存直读库，提交后下一请求即生效。
+
+```sh
+ops/fix-gift-code.sh GI003   # 参数为礼品 external_ref
+```
+
+脚本流程：修正前回滚点备份（`wedding-pre-fix-<TS>.db`）→ 交互式两次隐藏输入新激活码并比对一致（不回显、不进 shell history、不作命令行参数）→ `compose run` 一次性旁路容器执行 `gift fix-code`（明文经 stdin 传入；事务内「加密 → UPDATE → 读回解密比对」后提交，任一失败整体回滚）。
+
+纪律与边界：
+- 仅支持 `credential_mode=code`；`card_secret` 与不存在的 ref 由子命令明确拒绝（零写入退出非零），防止把卡号字段当激活码误改；
+- 全程不打印明文与旧值；修正后用真实访问链路人工核对一次该组 reveal；
+- 子命令随镜像发布：开发机 `ops/build-image.sh` → scp → 正式机 `ops/load-image.sh` 后即可用（`compose run` 走新镜像，运行中服务容器无需重启切换）；
+- 改错需回退时按 §7 还原 `wedding-pre-fix-<TS>.db`。
+
 ## 7. 回滚预案
 
 | 场景 | 操作 |
@@ -516,6 +532,7 @@ rm -rf /data/wedding/append/*
 | 导入后数量核对不符 | 不启动服务；离线核对事实源，必要时 `rm /data/wedding/data/wedding.db*` 后从 §2.6 重来（密钥摘要与礼品密文随库重建，app.key 不变即可） |
 | 追加（§6.4）校验不过或冲突 | 数据库零写入（事务内复跑校验 + 单事务回滚）；修正离线数据后重跑 `ops/append-data.sh` |
 | 追加已写入但需撤销 | `ops/stop-app.sh` 后 `ops/restore-db.sh wedding-pre-append-<TS>.db` 还原追加前备份，再 `ops/start-app.sh` |
+| 激活码修正（§6.6）改错或改后需回退 | 同追加撤销：`ops/stop-app.sh` 后 `ops/restore-db.sh wedding-pre-fix-<TS>.db` 还原修正前备份，再 `ops/start-app.sh`；修正本身是单事务，失败零写入无需回滚 |
 | 启动后应用异常 | `ops/stop-app.sh`；用 `ops/restore-db.sh <备份文件>` 恢复（仅操作 DB，先停服、失败自动回滚、完成后 `ops/start-app.sh`；可选恢复后清空 SESSION）；镜像问题则在开发机 `git checkout <上一 commit>` 重新 `ops/build-image.sh`，传输后 load 并 `ops/start-app.sh` |
 | 需整体下线业务 | 按 M2 runbook §6 人工删除 nginx wedding 块并热加载，再 `docker compose -p wedding -f deploy/compose.yaml down`（真实数据库文件保留不动，操作前再次备份） |
 | nginx 异常（`/wedding/` 全 404） | 第一嫌疑是 live conf 被 Costra 模板刷新覆盖：`grep -c wedding /data/conf/nginx/costra.cloud.conf` 为 0 即确认，按 §2.9 重新插入片段并热加载 |
@@ -555,6 +572,7 @@ rm -rf /data/wedding/append/*
 
 | 版本 | 日期 | 变更内容 |
 |---|---|---|
+| v2.13 | 2026-09-27 | 新增 §6.6 修正 code 模式礼品激活码流程（`ops/fix-gift-code.sh` + `wedding gift fix-code` 子命令）：「只增不改不删」（D-21）唯一例外，回滚点备份 → 两次隐藏输入 → 事务内加密/UPDATE/读回比对，在线零停机；§7 回滚预案补对应行；架构侧见 `docs/02-technical-architecture.md` v2.12 |
 | v2.12 | 2026-09-18 | 日报补齐已绑定同行组明细：§6.5 说明绑定情况分「已绑定密钥的同行组」（列密钥编号）与「尚未绑定密钥的同行组」（待办）两组；架构侧见 `docs/02-technical-architecture.md` v2.11 |
 | v2.11 | 2026-09-17 | SMTP 配置容错修正：§2.4 强调 smtp.env 属主必须 65534（`0600 root:root` 实测导致容器 EACCES），§6.5 补 `smtp_config_invalid` 排障；配置问题降级为警告+禁用日报，不再阻塞 serve；架构侧见 `docs/02-technical-architecture.md` v2.10 |
 | v2.10 | 2026-09-17 | SMTP 配置改为应用运行时主动读取：§2.4 smtp.env 说明（环境变量优先、文件补缺，缺失仅日报不启用）、§3.1 表补 `WEDDING_SMTP_ENV_PATH`、§6.5 同步；移除 compose `env_file`（构建/执行机不再要求持有该文件）；架构侧见 `docs/02-technical-architecture.md` v2.9 |

@@ -11,6 +11,7 @@
 //	wedding data append --dir <dir> [--dry-run]  开放世界校验通过后单事务纯追加（要求已首导，在线可用）
 //	wedding status                         输出脱敏统计（内部编号与数量，不含明文）
 //	wedding key revoke --ref <card-ref>    停用密钥并删除其会话
+//	wedding gift fix-code --ref <gift-ref> 修正 code 模式礼品的激活码（新明文从 stdin 读入，在线可用）
 //	wedding backup create --output <path>  SQLite online backup 一致性备份
 //	wedding report daily [--dry-run] [--window 24h]  纯统计版日报（人工验证口径与 SMTP）
 //
@@ -26,6 +27,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -76,6 +78,8 @@ func main() {
 		os.Exit(runStatus(cfg))
 	case "key":
 		os.Exit(runKey(cfg, os.Args[2:]))
+	case "gift":
+		os.Exit(runGift(cfg, os.Args[2:]))
 	case "backup":
 		os.Exit(runBackup(cfg, os.Args[2:]))
 	case "report":
@@ -323,6 +327,63 @@ func runKey(cfg app.Config, args []string) int {
 	return 0
 }
 
+// runGift 处理 gift fix-code：修正 code 模式礼品的激活码（上线后纠错通道，
+// 「只增不改不删」的唯一例外）。新明文从 stdin 读入——不做命令行参数，
+// 避免进入 shell history 与进程列表；输出遵守脱敏纪律，不回显明文。
+// 服务在线时可安全执行，提交后下一请求即生效，无需停服。
+func runGift(cfg app.Config, args []string) int {
+	if len(args) < 1 || args[0] != "fix-code" {
+		fmt.Fprintln(os.Stderr, "用法: wedding gift fix-code --ref <礼品 external_ref>（新激活码从 stdin 读入）")
+		return 2
+	}
+	fs := flag.NewFlagSet("gift fix-code", flag.ContinueOnError)
+	ref := fs.String("ref", "", "礼品的 external_ref（如 GI003）")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if *ref == "" {
+		fmt.Fprintln(os.Stderr, "缺少 --ref 参数")
+		return 2
+	}
+
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "gift fix-code 失败: 读取 stdin 失败:", err)
+		return 1
+	}
+	code := strings.TrimRight(string(raw), "\r\n")
+
+	cx, err := cryptox.Load(cfg.AppKeyPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "gift fix-code 失败:", err)
+		return 1
+	}
+	db, ctx, cancel, err := openStore(cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "gift fix-code 失败:", err)
+		return 1
+	}
+	defer db.Close()
+	defer cancel()
+
+	result, err := db.FixGiftCode(ctx, cx, *ref, code)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "gift fix-code 失败:", err)
+		return 1
+	}
+	switch result {
+	case store.FixGiftCodeDone:
+		fmt.Printf("礼品 %s 的激活码已更新（code 模式，写后读回校验通过）。\n", *ref)
+	case store.FixGiftCodeNotFound:
+		fmt.Fprintf(os.Stderr, "礼品 %s 不存在。\n", *ref)
+		return 1
+	case store.FixGiftCodeNotCodeMode:
+		fmt.Fprintf(os.Stderr, "礼品 %s 不是 code 模式，拒绝修改（本通道仅支持 code；card_secret 请勿误用）。\n", *ref)
+		return 1
+	}
+	return 0
+}
+
 func runBackup(cfg app.Config, args []string) int {
 	if len(args) < 1 || args[0] != "create" {
 		fmt.Fprintln(os.Stderr, "用法: wedding backup create --output <目标文件路径>")
@@ -420,6 +481,7 @@ func usage() {
   wedding data append --dir <dir> [--dry-run]  校验通过后单事务纯追加（要求已首导，在线可用）
   wedding status                         输出脱敏统计
   wedding key revoke --ref <ref>         停用密钥并删除其会话
+  wedding gift fix-code --ref <ref>      修正 code 模式礼品的激活码（新明文从 stdin 读入，在线可用）
   wedding backup create --output <path>  SQLite online backup 一致性备份
   wedding report daily [--dry-run] [--window 24h]
                                          纯统计版日报（人工验证口径与 SMTP 链路；

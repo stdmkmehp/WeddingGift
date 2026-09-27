@@ -81,6 +81,9 @@ go run ./cmd/wedding status
 # 停用密钥并删除其会话（不自动补发、不改绑）
 go run ./cmd/wedding key revoke --ref K001
 
+# 修正 code 模式礼品的激活码（上线后纠错通道；新明文从 stdin 读入，在线可用）
+echo NEWCODE001 | go run ./cmd/wedding gift fix-code --ref GI001
+
 # SQLite online backup 一致性备份（含完整性检查，目标存在则拒绝覆盖）
 go run ./cmd/wedding backup create --output /path/to/wedding-backup.db
 
